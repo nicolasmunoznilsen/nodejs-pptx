@@ -7,7 +7,7 @@
   "types": "dist/index.d.ts",
   "files": ["dist", "README.md", "LICENSE"],
   "engines": { "node": ">=20" },
-  "scripts": { "build": "tsc", "test": "vitest run", "lint": "eslint ." },
+  "scripts": { "build": "tsc", "prepack": "npm run build", "test": "vitest run", "lint": "eslint ." },
   "keywords": ["pptx", "powerpoint", "presentation", "office", "openxml", "python-pptx"],
   "license": "MIT",
   "dependencies": { "fast-xml-parser": "^4.5.1", "jszip": "^3.10.1" },
