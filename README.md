@@ -69,3 +69,5 @@ npm test
 ```
 
 See `examples/basic.ts` for a complete example.
+
+For planned architecture and python-pptx parity work, see [`ROADMAP.md`](ROADMAP.md).
