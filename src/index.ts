@@ -1,5 +1,5 @@
 export { EMU_PER_INCH } from './ooxml/constants.js';
-export { resolveRelationshipTarget } from './ooxml/paths.js';
+export { resolveRelationshipTarget, resolveRootRelationshipTarget } from './ooxml/paths.js';
 export { RelationshipCollection, type Relationship } from './package/relationships.js';
 export { ContentTypes } from './package/content-types.js';
 export { Presentation, inches, type PresentationOptions } from './presentation/presentation.js';

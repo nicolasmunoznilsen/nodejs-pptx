@@ -3,9 +3,14 @@ import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { Presentation, resolveRelationshipTarget } from '../src/index.js';
+import { Presentation, resolveRelationshipTarget, resolveRootRelationshipTarget } from '../src/index.js';
 
 describe('OOXML path resolution', () => {
+  it('resolves root relationship targets from the package root', () => {
+    expect(resolveRootRelationshipTarget('ppt/presentation.xml')).toBe('ppt/presentation.xml');
+    expect(resolveRootRelationshipTarget('/ppt/presentation.xml')).toBe('ppt/presentation.xml');
+  });
+
   it('resolves absolute, relative, dot, and parent relationship targets without OS paths', () => {
     expect(resolveRelationshipTarget('ppt/presentation.xml', 'slides/slide1.xml')).toBe('ppt/slides/slide1.xml');
     expect(resolveRelationshipTarget('ppt/slides/slide1.xml', '../slideLayouts/slideLayout1.xml')).toBe('ppt/slideLayouts/slideLayout1.xml');

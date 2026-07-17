@@ -23,3 +23,8 @@ export function resolveRelationshipTarget(sourcePart: string, target: string): s
   if (target.startsWith('/')) return normalizePackagePath(target.slice(1));
   return normalizePackagePath(`${partDir(sourcePart)}/${target}`);
 }
+
+export function resolveRootRelationshipTarget(target: string): string {
+  if (target.startsWith('/')) return normalizePackagePath(target.slice(1));
+  return normalizePackagePath(target);
+}

@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import JSZip from 'jszip';
 import { MAIN_REL, REL_NS, SLIDE_LAYOUT_REL, SLIDE_MASTER_REL, SLIDE_REL, THEME_REL } from '../ooxml/constants.js';
 import { allocateSlidePath } from '../ooxml/ids.js';
-import { relsPath, resolveRelationshipTarget } from '../ooxml/paths.js';
+import { relsPath, resolveRelationshipTarget, resolveRootRelationshipTarget } from '../ooxml/paths.js';
 import { arr, parseXml, readAttr, xmlToString, type XmlNode } from '../ooxml/xml.js';
 import { ContentTypes } from '../package/content-types.js';
 import { RelationshipCollection } from '../package/relationships.js';
@@ -68,7 +68,7 @@ export class Presentation {
     const rootRels = new RelationshipCollection(parseXml('_rels/.rels', await rootRelsFile.async('string')));
     const mainRel = rootRels.findByType(MAIN_REL) ?? rootRels.items.find(r => r.target.endsWith('presentation.xml'));
     if (!mainRel) throw new Error('Invalid PPTX: missing officeDocument relationship.');
-    const presPath = resolveRelationshipTarget('_rels/.rels', mainRel.target);
+    const presPath = resolveRootRelationshipTarget(mainRel.target);
     const presFile = zip.file(presPath); if (!presFile) throw new Error(`Invalid PPTX: missing ${presPath}.`);
     const presXml = parseXml(presPath, await presFile.async('string'));
     const presRelsPath = relsPath(presPath); const presRelsFile = zip.file(presRelsPath); if (!presRelsFile) throw new Error(`Invalid PPTX: missing ${presRelsPath}.`);
