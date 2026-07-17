@@ -1,66 +1,71 @@
 # Roadmap toward python-pptx parity
 
-`nodejs-pptx` is currently an MVP, not a full `python-pptx` equivalent. It covers roughly 10-15% of the practical API surface: creating/opening PPTX files, adding blank slides and text boxes, reading slide text, replacing text, and saving while preserving unrelated ZIP parts.
+`nodejs-pptx` is currently an MVP, not a full `python-pptx` equivalent. It covers creating/opening PPTX files, adding blank slides and text boxes, enumerating basic shapes, reading and editing text runs, replacing text, and saving while preserving unrelated ZIP parts.
+
+## Architecture status
+
+The codebase is moving away from a single-file implementation. Current modules are organized around package/OOXML concerns, presentations, slides, shapes, and text:
+
+```txt
+src/
+  package/
+    content-types.ts
+    pptx-package.ts
+    relationships.ts
+  ooxml/
+    constants.ts
+    ids.ts
+    paths.ts
+    xml.ts
+  presentation/
+    presentation.ts
+    slide-collection.ts
+  slides/
+    slide.ts
+  shapes/
+    shape.ts
+    shape-collection.ts
+    text-box.ts
+  text/
+    text-frame.ts
+    paragraph.ts
+    run.ts
+```
 
 ## Current scope
 
 | Area | Current state | Needed to approach `python-pptx` |
 | --- | --- | --- |
-| Slides | Add and retrieve slides | Delete, duplicate, reorder, layouts, masters, and backgrounds |
-| Shapes | Text boxes only | Generic shape API, rectangles, circles, lines, connectors, groups, and freeforms |
-| Text | Simple text with size, color, and font | Paragraphs, runs, bold, italic, alignment, spacing, bullets, margins, autofit, and hyperlinks |
+| Slides | Add and retrieve slides, allocate safe slide part names | Delete, duplicate, reorder, richer layouts, masters, and backgrounds |
+| Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
+| Text | `TextFrame -> Paragraph -> Run`, basic run font editing, cross-run `replaceText` | Full paragraph formatting, margins, autofit, hyperlinks, robust rich-text rewrite |
 | Images | Not implemented | Add, read, replace, crop, and preserve relationships/media |
 | Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
 | Placeholders | Not implemented | Titles, content, pictures, and inheritance from layouts |
 | Notes | Not implemented | Read, create, and modify speaker notes |
 | Properties | Title/author only at creation | Read and modify all document properties |
-| OOXML API | Generic `Record<string, unknown>` model | Typed classes for elements, relationships, and package parts |
+| OOXML API | Internal XML model with typed facades | More typed element classes and package-part abstractions |
 
-## Priority technical issue
+## Text model notes
 
-The implementation still lives mostly in a single `src/index.ts` file and manipulates complete XML objects through `fast-xml-parser`. That is acceptable for the MVP, but a robust library needs module boundaries around package parts, relationships, content types, slides, shapes, and text before adding larger features.
-
-A target structure for the next phase is:
-
-```txt
-src/
-  package/
-  ooxml/
-  presentation/
-  slides/
-  shapes/
-  text/
-  images/
-  tables/
-  charts/
-```
-
-## Text model gap
-
-`replaceText()` currently replaces each `a:t` node independently. A visually continuous phrase can be split across multiple runs, for example:
-
-```txt
-"Informe " + "2026"
-```
-
-Searching for `"Informe 2026"` may therefore fail. The next text layer should model the same hierarchy exposed by `python-pptx`:
+Text now exposes the intended hierarchy:
 
 ```txt
 TextFrame -> Paragraph -> Run
 ```
 
-That model should become the basis for multi-run search/replace and formatting.
+`replaceText()` can match text split across multiple runs within the same paragraph, for example `"Informe " + "2026"`. The replacement is written to the first affected run to preserve that run's formatting, and subsequent affected runs are cleared or trimmed. Regex support is intentionally conservative: matching across runs is supported within a paragraph, but replacement capture expansion is not yet modeled.
 
 ## Recommended order
 
-1. Build a robust base: split OOXML/package concerns, relationships, content types, identifiers, and round-trip preservation.
-2. Add the shape and text models: `slide.shapes`, generic shapes, paragraphs, runs, and formatting.
+1. Continue hardening the base: package parts, relationships, content types, identifiers, and round-trip preservation.
+2. Expand the shape and text models: `slide.shapes`, generic shapes, paragraphs, runs, and formatting.
 3. Implement real slide operations: layouts, masters, placeholders, delete, move, and duplicate.
 4. Add images and tables.
 5. Add charts and speaker notes.
 6. Build a compatibility corpus with PPTX files from PowerPoint, LibreOffice, and Google Slides, including open-save-open round-trip tests.
 
-## Next version focus
+## Current restrictions
 
-The next version should prioritize the shape model and text model before tables or charts. Without those abstractions, every new feature will keep manipulating XML directly, making the project harder to maintain as the API grows.
+Do not add images, tables, charts, notes, animations, SmartArt, audio, or video until the shape/text abstractions and round-trip behavior are stronger.
