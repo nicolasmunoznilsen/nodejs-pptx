@@ -8,12 +8,14 @@ import { arr, parseXml, readAttr, xmlToString, type XmlNode } from '../ooxml/xml
 import { ContentTypes } from '../package/content-types.js';
 import { RelationshipCollection } from '../package/relationships.js';
 import { blankSlideXml, Slide } from '../slides/slide.js';
+import { SlideLayout, SlideLayoutCollection, loadSlideLayouts } from './slide-layout.js';
 import { SlideCollection } from './slide-collection.js';
 
 export interface PresentationOptions { title?: string; author?: string; width?: number; height?: number }
 
 export class Presentation {
   readonly slides = new SlideCollection(this);
+  slideLayouts = new SlideLayoutCollection([]);
   private zip: JSZip;
   private presentationPath = 'ppt/presentation.xml';
   private presentationXml: XmlNode;
@@ -22,6 +24,8 @@ export class Presentation {
   private presentationRels: RelationshipCollection;
   private contentTypes: ContentTypes;
   readonly slideList: Slide[] = [];
+  private coreXml?: XmlNode;
+  private coreDirty = false;
 
   private constructor(zip: JSZip, presentationXml: XmlNode, presentationRels: RelationshipCollection, contentTypes: ContentTypes) {
     this.zip = zip;
@@ -52,6 +56,8 @@ export class Presentation {
     zip.file('ppt/slideMasters/slideMaster1.xml', slideMasterXml());
     zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${SLIDE_LAYOUT_REL}" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${THEME_REL}" Target="../theme/theme1.xml"/></Relationships>`);
     const p = new Presentation(zip, presXml, presRels, contentTypes);
+    p.slideLayouts = new SlideLayoutCollection([new SlideLayout('ppt/slideLayouts/slideLayout1.xml', parseXml('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml()), { path: 'ppt/slideMasters/slideMaster1.xml' })]);
+    p.coreXml = parseXml('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(options.title ?? 'Untitled presentation')}</dc:title><dc:creator>${escapeXml(options.author ?? 'nodejs-pptx')}</dc:creator></cp:coreProperties>`);
     p.presentationDirty = true;
     p.presentationRels.dirty = true;
     p.persistPresentationIfDirty();
@@ -74,7 +80,10 @@ export class Presentation {
     const presRelsPath = relsPath(presPath); const presRelsFile = zip.file(presRelsPath); if (!presRelsFile) throw new Error(`Invalid PPTX: missing ${presRelsPath}.`);
     const presRels = new RelationshipCollection(parseXml(presRelsPath, await presRelsFile.async('string')));
     const contentTypes = await ContentTypes.load(zip);
-    const p = new Presentation(zip, presXml, presRels, contentTypes); p.presentationPath = presPath; p.presentationRelsPath = presRelsPath;
+    const p = new Presentation(zip, presXml, presRels, contentTypes);
+    p.presentationPath = presPath; p.presentationRelsPath = presRelsPath;
+    p.slideLayouts = new SlideLayoutCollection(await loadSlideLayouts(zip, presPath, presRels));
+    await p.loadCoreProperties();
     await p.loadSlides();
     return p;
   }
@@ -82,18 +91,21 @@ export class Presentation {
   async save(filePath: string): Promise<void> { await writeFile(filePath, await this.toBuffer()); }
   async toBuffer(): Promise<Buffer> {
     this.persistPresentationIfDirty();
+    this.persistCoreIfDirty();
     this.contentTypes.save(this.zip);
     this.slideList.forEach(s => s.persistIfDirty());
     return await this.zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   }
 
   /** @internal */
-  addSlideInternal(): Slide {
+  addSlideInternal(layout?: SlideLayout): Slide {
     const slidePath = allocateSlidePath(this.zip);
     const slideXml = parseXml(slidePath, blankSlideXml());
     const slideRels = RelationshipCollection.empty();
-    slideRels.add(SLIDE_LAYOUT_REL, '../slideLayouts/slideLayout1.xml');
+    const selectedLayout = layout ?? this.slideLayouts.toArray()[0];
+    slideRels.add(SLIDE_LAYOUT_REL, selectedLayout ? relativeSlideTarget(selectedLayout.path) : '../slideLayouts/slideLayout1.xml');
     const slide = new Slide(this.zip, slidePath, slideXml, slideRels.xml);
+    slide.layout = selectedLayout;
     this.slideList.push(slide);
     const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
     const sldIdLst = (this.presentationXml['p:presentation'] as XmlNode)['p:sldIdLst'] as XmlNode;
@@ -108,10 +120,82 @@ export class Presentation {
     return slide;
   }
 
+  /** @internal */
+  removeSlideInternal(index: number): Slide {
+    this.assertSlideIndex(index);
+    const [removed] = this.slideList.splice(index, 1);
+    const list = this.slideIdNodes();
+    const [node] = list.splice(index, 1);
+    const rid = readAttr(node, 'r:id');
+    if (rid) this.presentationRels.remove(rid);
+    this.setSlideIdNodes(list);
+    (this.zip as unknown as { remove(path: string): void }).remove(removed.path);
+    (this.zip as unknown as { remove(path: string): void }).remove(relsPath(removed.path));
+    this.contentTypes.removeOverride(removed.path);
+    this.presentationDirty = true;
+    return removed;
+  }
+
+  /** @internal */
+  moveSlideInternal(fromIndex: number, toIndex: number): void {
+    this.assertSlideIndex(fromIndex); this.assertTargetIndex(toIndex);
+    if (fromIndex === toIndex) return;
+    const [slide] = this.slideList.splice(fromIndex, 1);
+    this.slideList.splice(toIndex, 0, slide);
+    const nodes = this.slideIdNodes();
+    const [node] = nodes.splice(fromIndex, 1);
+    nodes.splice(toIndex, 0, node);
+    this.setSlideIdNodes(nodes);
+    this.presentationDirty = true;
+  }
+
+  /** @internal */
+  duplicateSlideInternal(index: number, targetIndex = index + 1): Slide {
+    this.assertSlideIndex(index); this.assertTargetIndex(targetIndex);
+    const original = this.slideList[index];
+    const slidePath = allocateSlidePath(this.zip);
+    const xml = parseXml(slidePath, xmlToString(original.xmlNode));
+    const relsXml = parseXml(relsPath(slidePath), xmlToString(original.relationshipsXml));
+    const slide = new Slide(this.zip, slidePath, xml, relsXml);
+    slide.layout = original.layout;
+    this.slideList.splice(targetIndex, 0, slide);
+    const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
+    const nodes = this.slideIdNodes();
+    nodes.splice(targetIndex, 0, { '@_id': String(this.nextSlideId()), '@_r:id': rel.id });
+    this.setSlideIdNodes(nodes);
+    this.contentTypes.addOverride(slidePath, 'application/vnd.openxmlformats-officedocument.presentationml.slide+xml');
+    slide.persist();
+    this.zip.file(relsPath(slidePath), xmlToString(relsXml));
+    this.presentationDirty = true;
+    return slide;
+  }
+
   private persistPresentationIfDirty(): void {
     if (this.presentationDirty) this.zip.file(this.presentationPath, xmlToString(this.presentationXml));
     if (this.presentationRels.dirty) this.zip.file(this.presentationRelsPath, xmlToString(this.presentationRels.xml));
   }
+
+  private async loadCoreProperties(): Promise<void> { const file = this.zip.file('docProps/core.xml'); if (file) this.coreXml = parseXml('docProps/core.xml', await file.async('string')); }
+  private persistCoreIfDirty(): void { if (this.coreDirty && this.coreXml) this.zip.file('docProps/core.xml', xmlToString(this.coreXml)); }
+
+  get width(): number { const sz = (this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode; return (parseInt(readAttr(sz, 'cx') ?? '0', 10) || 0) / 914400; }
+  set width(v: number) { ((this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode)['@_cx'] = String(inches(v)); this.presentationDirty = true; }
+  get height(): number { const sz = (this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode; return (parseInt(readAttr(sz, 'cy') ?? '0', 10) || 0) / 914400; }
+  set height(v: number) { ((this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode)['@_cy'] = String(inches(v)); this.presentationDirty = true; }
+
+  private coreGet(name: string): string { return String(((this.coreXml?.['cp:coreProperties'] as XmlNode|undefined)?.[name] as string|undefined) ?? ''); }
+  private coreSet(name: string, value: string): void { const root = this.coreXml?.['cp:coreProperties'] as XmlNode|undefined; if (root && root[name] !== value) { root[name] = value; this.coreDirty = true; } }
+  get title(): string { return this.coreGet('dc:title'); } set title(v: string) { this.coreSet('dc:title', v); }
+  get author(): string { return this.coreGet('dc:creator'); } set author(v: string) { this.coreSet('dc:creator', v); }
+  get subject(): string { return this.coreGet('dc:subject'); } set subject(v: string) { this.coreSet('dc:subject', v); }
+  get keywords(): string { return this.coreGet('cp:keywords'); } set keywords(v: string) { this.coreSet('cp:keywords', v); }
+  get comments(): string { return this.coreGet('dc:description'); } set comments(v: string) { this.coreSet('dc:description', v); }
+
+  private slideIdNodes(): XmlNode[] { const list = ((this.presentationXml['p:presentation'] as XmlNode)['p:sldIdLst'] as XmlNode); return arr(list['p:sldId'] as XmlNode | XmlNode[] | undefined); }
+  private setSlideIdNodes(nodes: XmlNode[]): void { ((this.presentationXml['p:presentation'] as XmlNode)['p:sldIdLst'] as XmlNode)['p:sldId'] = nodes; }
+  private nextSlideId(): number { return this.slideIdNodes().reduce((m,n)=>Math.max(m, parseInt(readAttr(n,'id') ?? '0',10)||0),255)+1; }
+  private assertSlideIndex(index: number): void { if (!Number.isInteger(index) || index < 0 || index >= this.slideList.length) throw new RangeError(`Slide index ${index} is out of range (0-${this.slideList.length - 1}).`); }
+  private assertTargetIndex(index: number): void { if (!Number.isInteger(index) || index < 0 || index > this.slideList.length) throw new RangeError(`Slide target index ${index} is out of range (0-${this.slideList.length}).`); }
 
   private async loadSlides(): Promise<void> {
     const pres = this.presentationXml['p:presentation'] as XmlNode | undefined; let list = pres?.['p:sldIdLst'] as XmlNode | string | undefined;
@@ -124,7 +208,11 @@ export class Presentation {
       const slidePath = resolveRelationshipTarget(this.presentationPath, rel.target);
       const file = this.zip.file(slidePath); if (!file) throw new Error(`Invalid PPTX: missing slide part ${slidePath}.`);
       const relsFile = this.zip.file(relsPath(slidePath));
-      this.slideList.push(Slide.parse(this.zip, slidePath, await file.async('string'), relsFile ? await relsFile.async('string') : undefined));
+      const slide = Slide.parse(this.zip, slidePath, await file.async('string'), relsFile ? await relsFile.async('string') : undefined);
+      const layoutRel = slide.relationshipsItems.find(r => r.type === SLIDE_LAYOUT_REL);
+      const layoutPath = layoutRel ? resolveRelationshipTarget(slidePath, layoutRel.target) : undefined;
+      slide.layout = layoutPath ? this.slideLayouts.toArray().find(l => l.path === layoutPath) : undefined;
+      this.slideList.push(slide);
     }
   }
 }
@@ -134,3 +222,5 @@ export function inches(value: number): number { return Math.round(value * 914400
 function slideLayoutXml(): string { return `<?xml version="1.0" encoding="UTF-8"?><p:sldLayout xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`; }
 function slideMasterXml(): string { return `<?xml version="1.0" encoding="UTF-8"?><p:sldMaster xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr></p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`; }
 function themeXml(): string { return `<?xml version="1.0" encoding="UTF-8"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="nodejs-pptx"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri Light"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>`; }
+
+function relativeSlideTarget(path: string): string { return path.startsWith('ppt/slideLayouts/') ? `../slideLayouts/${basename(path)}` : path; }
