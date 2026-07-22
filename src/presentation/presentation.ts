@@ -44,7 +44,8 @@ export class Presentation {
     contentTypes.addOverride('docProps/core.xml', 'application/vnd.openxmlformats-package.core-properties+xml');
     contentTypes.save(zip, true);
     zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${MAIN_REL}" Target="ppt/presentation.xml"/></Relationships>`);
-    zip.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(options.title ?? 'Untitled presentation')}</dc:title><dc:creator>${escapeXml(options.author ?? 'nodejs-pptx')}</dc:creator></cp:coreProperties>`);
+    const coreXmlString = `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(options.title ?? 'Untitled presentation')}</dc:title><dc:creator>${escapeXml(options.author ?? 'nodejs-pptx')}</dc:creator></cp:coreProperties>`;
+    zip.file('docProps/core.xml', coreXmlString);
     const presXml = parseXml('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8"?><p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst></p:sldIdLst><p:sldSz cx="${inches(options.width ?? 10)}" cy="${inches(options.height ?? 5.625)}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
     const presRoot = presXml['p:presentation'] as XmlNode;
     if (typeof presRoot['p:sldIdLst'] === 'string') presRoot['p:sldIdLst'] = {};
@@ -57,7 +58,7 @@ export class Presentation {
     zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${SLIDE_LAYOUT_REL}" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${THEME_REL}" Target="../theme/theme1.xml"/></Relationships>`);
     const p = new Presentation(zip, presXml, presRels, contentTypes);
     p.slideLayouts = new SlideLayoutCollection([new SlideLayout('ppt/slideLayouts/slideLayout1.xml', parseXml('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml()), { path: 'ppt/slideMasters/slideMaster1.xml' })]);
-    p.coreXml = parseXml('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(options.title ?? 'Untitled presentation')}</dc:title><dc:creator>${escapeXml(options.author ?? 'nodejs-pptx')}</dc:creator></cp:coreProperties>`);
+    p.coreXml = parseXml('docProps/core.xml', coreXmlString);
     p.presentationDirty = true;
     p.presentationRels.dirty = true;
     p.persistPresentationIfDirty();
@@ -154,8 +155,8 @@ export class Presentation {
     this.assertSlideIndex(index); this.assertTargetIndex(targetIndex);
     const original = this.slideList[index];
     const slidePath = allocateSlidePath(this.zip);
-    const xml = parseXml(slidePath, xmlToString(original.xmlNode));
-    const relsXml = parseXml(relsPath(slidePath), xmlToString(original.relationshipsXml));
+    const xml = cloneXml(original.xmlNode);
+    const relsXml = cloneXml(original.relationshipsXml);
     const slide = new Slide(this.zip, slidePath, xml, relsXml);
     slide.layout = original.layout;
     this.slideList.splice(targetIndex, 0, slide);
@@ -224,3 +225,5 @@ function slideMasterXml(): string { return `<?xml version="1.0" encoding="UTF-8"
 function themeXml(): string { return `<?xml version="1.0" encoding="UTF-8"?><a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="nodejs-pptx"><a:themeElements><a:clrScheme name="Office"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F497D"/></a:dk2><a:lt2><a:srgbClr val="EEECE1"/></a:lt2><a:accent1><a:srgbClr val="4F81BD"/></a:accent1><a:accent2><a:srgbClr val="C0504D"/></a:accent2><a:accent3><a:srgbClr val="9BBB59"/></a:accent3><a:accent4><a:srgbClr val="8064A2"/></a:accent4><a:accent5><a:srgbClr val="4BACC6"/></a:accent5><a:accent6><a:srgbClr val="F79646"/></a:accent6><a:hlink><a:srgbClr val="0000FF"/></a:hlink><a:folHlink><a:srgbClr val="800080"/></a:folHlink></a:clrScheme><a:fontScheme name="Office"><a:majorFont><a:latin typeface="Calibri Light"/></a:majorFont><a:minorFont><a:latin typeface="Calibri"/></a:minorFont></a:fontScheme><a:fmtScheme name="Office"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="6350" cap="flat" cmpd="sng" algn="ctr"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:prstDash val="solid"/></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>`; }
 
 function relativeSlideTarget(path: string): string { return path.startsWith('ppt/slideLayouts/') ? `../slideLayouts/${basename(path)}` : path; }
+
+function cloneXml<T extends XmlNode>(xml: T): T { return JSON.parse(JSON.stringify(xml)) as T; }
