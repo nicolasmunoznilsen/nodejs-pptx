@@ -47,3 +47,80 @@ async function BunlessWrite(path: string, data: Buffer): Promise<void> {
   const { writeFile } = await import('node:fs/promises');
   await writeFile(path, data);
 }
+
+describe('Slide operations, layouts, placeholders, and metadata', () => {
+  it('removes first, middle, and last slides while updating package parts', async () => {
+    for (const index of [0, 1, 2]) {
+      const pptx = Presentation.create();
+      pptx.slides.add().addTextBox('one');
+      pptx.slides.add().addTextBox('two');
+      pptx.slides.add().addTextBox('three');
+      const removed = pptx.slides.remove(index);
+      expect(removed.text).toBe(['one', 'two', 'three'][index]);
+      const zip = await JSZip.loadAsync(await pptx.toBuffer());
+      expect(zip.file(removed.path)).toBeNull();
+      expect(zip.file(`ppt/slides/_rels/${removed.path.split('/').pop()}.rels`)).toBeNull();
+      const reopened = await Presentation.open(await pptx.toBuffer());
+      expect(reopened.slides.toArray().map(s => s.text)).toEqual(['one', 'two', 'three'].filter((_, i) => i !== index));
+    }
+  });
+
+  it('moves slides by reordering p:sldIdLst only and survives reopen', async () => {
+    const pptx = Presentation.create();
+    pptx.slides.add().addTextBox('one');
+    pptx.slides.add().addTextBox('two');
+    pptx.slides.add().addTextBox('three');
+    const before = await JSZip.loadAsync(await pptx.toBuffer());
+    const slideXmlBefore = await before.file('ppt/slides/slide1.xml')?.async('string');
+    pptx.slides.move(2, 0);
+    const after = await JSZip.loadAsync(await pptx.toBuffer());
+    expect(await after.file('ppt/slides/slide1.xml')?.async('string')).toBe(slideXmlBefore);
+    const reopened = await Presentation.open(await pptx.toBuffer());
+    expect(reopened.slides.toArray().map(s => s.text)).toEqual(['three', 'one', 'two']);
+  });
+
+  it('duplicates slides with XML, text runs, and relationships', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    slide.addTextBox('Hello');
+    slide.addTextBox('World');
+    const copy = pptx.slides.duplicate(0);
+    expect(copy.path).not.toBe(slide.path);
+    expect(pptx.slides.toArray().map(s => s.text)).toEqual(['Hello\nWorld', 'Hello\nWorld']);
+    const reopened = await Presentation.open(await pptx.toBuffer());
+    expect(reopened.slides.length).toBe(2);
+    expect(reopened.slides.get(1).layout?.name).toBe('Blank');
+    const zip = await JSZip.loadAsync(await pptx.toBuffer());
+    const originalRels = await zip.file('ppt/slides/_rels/slide1.xml.rels')?.async('string');
+    const duplicateRels = await zip.file('ppt/slides/_rels/slide2.xml.rels')?.async('string');
+    expect(duplicateRels).toBe(originalRels);
+    expect(await zip.file('ppt/slides/slide1.xml')?.async('string')).toContain('Hello');
+  });
+
+  it('exposes layouts, placeholders, backgrounds, dimensions, and core properties', async () => {
+    const pptx = Presentation.create({ title: 'Initial', author: 'Author' });
+    expect(pptx.slideLayouts.length).toBeGreaterThan(0);
+    const blank = pptx.slideLayouts.findByName('Blank');
+    expect(blank?.type).toBe('blank');
+    const slide = pptx.slides.add(blank);
+    expect(slide.layout?.name).toBe('Blank');
+    expect(slide.placeholders.length).toBe(0);
+    slide.background.color = '#FF0000';
+    pptx.width = 11;
+    pptx.height = 6;
+    pptx.title = 'Changed';
+    pptx.author = 'Changed Author';
+    pptx.subject = 'Subject';
+    pptx.keywords = 'pptx,test';
+    pptx.comments = 'Comments';
+    const reopened = await Presentation.open(await pptx.toBuffer());
+    expect(reopened.width).toBe(11);
+    expect(reopened.height).toBe(6);
+    expect(reopened.title).toBe('Changed');
+    expect(reopened.author).toBe('Changed Author');
+    expect(reopened.subject).toBe('Subject');
+    expect(reopened.keywords).toBe('pptx,test');
+    expect(reopened.comments).toBe('Comments');
+    expect(reopened.slides.get(0).background.color).toBe('FF0000');
+  });
+});
