@@ -94,13 +94,13 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `slide.shapes.get(index)`
 - `slide.shapes.findByName(name)`
 - `slide.shapes.findById(id)`
+- `slide.shapes.all`
 - `shape.textFrame.paragraphs`
 - `paragraph.runs`
 - `paragraph.alignment`
 - `textFrame.alignment`
 - `run.text`
 - `run.font`
-
 
 ## Shapes API
 
@@ -121,6 +121,7 @@ Implemented shape operations are intentionally read-focused for this phase:
 - `slide.shapes.get(index)`
 - `slide.shapes.findByName(name)`
 - `slide.shapes.findById(id)`
+- `slide.shapes.all`
 - base `Shape` properties: `id`, `name`, `type`, `x`, `y`, `width`, `height`, `hasTextFrame`, `textFrame`
 
 Text boxes and text-bearing autoshapes expose `textFrame`; unknown shape types are preserved and surfaced as generic shapes.
@@ -156,13 +157,17 @@ paragraph.alignment = 'center';   // <a:pPr algn="ctr"/>
 paragraph.alignment = undefined;  // removes algn, so the value is inherited again
 ```
 
-A getter returns `undefined` when the paragraph has no explicit `algn` attribute, which means the
-alignment is inherited from the paragraph/list style, the placeholder, or the theme. Any other
-value throws a `TypeError`. `textFrame.alignment` is a convenience over the whole frame: reading
-returns the shared alignment only when every paragraph agrees, and writing applies it to all
-paragraphs. `slide.addTextBox()` also accepts `alignment`, and `slide.getTextBoxes()` reports it.
-Existing `a:pPr` attributes and children (`marL`, `indent`, `a:buChar`, `a:lnSpc`, ...) are kept;
-a newly created `a:pPr` is inserted as the first child of `a:p` as required by the schema.
+The getter returns `undefined` when the paragraph has no explicit `algn` attribute, which means the
+alignment is inherited from the paragraph/list style, the placeholder, or the theme. Assigning any
+other value throws a `TypeError`. `textFrame.alignment` is a convenience over the whole frame:
+reading returns the shared alignment only when every paragraph agrees (otherwise `undefined`), and
+writing applies it to all paragraphs. `slide.addTextBox()` also accepts `alignment`, and
+`slide.getTextBoxes()` reports it. Existing `a:pPr` attributes and children (`marL`, `indent`,
+`a:buChar`, `a:lnSpc`, ...) are kept; a newly created `a:pPr` is inserted as the first child of
+`a:p` as required by the schema. Reading or assigning an unchanged alignment does not mark the
+slide dirty, so untouched slides stay byte-identical after a round trip.
+
+`examples/basic.ts` is a runnable version of this snippet.
 
 `slide.replaceText()` can replace text that is split across multiple runs in the same paragraph:
 
