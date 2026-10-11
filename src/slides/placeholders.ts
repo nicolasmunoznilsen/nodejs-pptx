@@ -7,7 +7,7 @@ export class Placeholder {
   constructor(private readonly shape: XmlNode, private readonly markDirty: () => void) {}
   get id(): string { return readAttr(this.cnv, 'id') ?? ''; }
   get name(): string { return readAttr(this.cnv, 'name') ?? ''; }
-  get type(): PlaceholderType { const t = readAttr(this.ph, 'type') ?? (readAttr(this.ph, 'idx') ? 'body' : 'object'); return mapType(t); }
+  get type(): PlaceholderType { const t = readAttr(this.ph, 'type') ?? (readAttr(this.ph, 'idx') ? 'body' : 'object'); return mapPlaceholderType(t); }
   get idx(): string | undefined { return readAttr(this.ph, 'idx'); }
   get x(): number { return num(this.off, 'x'); }
   get y(): number { return num(this.off, 'y'); }
@@ -37,4 +37,39 @@ export function placeholdersFromTree(spTree: XmlNode | undefined, markDirty: () 
   return arr(spTree?.['p:sp'] as XmlNode | XmlNode[] | undefined).filter(s => !!(((s['p:nvSpPr'] as XmlNode|undefined)?.['p:nvPr'] as XmlNode|undefined)?.['p:ph'])).map(s => new Placeholder(s, markDirty));
 }
 function num(node: XmlNode, attr: string): number { return parseInt(readAttr(node, attr) ?? '0', 10) || 0; }
-function mapType(t: string): PlaceholderType { return ({ ctrTitle: 'centerTitle', subTitle: 'subtitle', sldNum: 'slideNumber', dt: 'date', ftr: 'footer', pic: 'picture' } as Record<string, PlaceholderType>)[t] ?? (['title','centerTitle','subtitle','body','object','picture','date','footer','slideNumber'].includes(t) ? t as PlaceholderType : 'unknown'); }
+
+/**
+ * `p:ph` `type` attribute value -> public placeholder type. Both the OOXML spellings
+ * (`ctrTitle`, `subTitle`, `sldNum`, ...) and the public spellings of `PlaceholderType` are
+ * accepted, matching what other tools write into real decks.
+ */
+const OOXML_TO_PLACEHOLDER_TYPE: Readonly<Record<string, PlaceholderType>> = {
+  title: 'title',
+  ctrTitle: 'centerTitle',
+  centerTitle: 'centerTitle',
+  subTitle: 'subtitle',
+  subtitle: 'subtitle',
+  body: 'body',
+  object: 'object',
+  pic: 'picture',
+  picture: 'picture',
+  dt: 'date',
+  date: 'date',
+  ftr: 'footer',
+  footer: 'footer',
+  sldNum: 'slideNumber',
+  slideNumber: 'slideNumber',
+};
+
+/**
+ * Maps a `p:ph` `type` attribute value to the public placeholder type.
+ *
+ * The lookup is guarded with `Object.hasOwn`, so names inherited from `Object.prototype`
+ * (`constructor`, `toString`, `valueOf`, `__proto__`, ...) never resolve through the prototype
+ * chain: a document containing `type="constructor"` maps to `'unknown'` instead of leaking an
+ * inherited value. Unknown and malformed names map to `'unknown'` too.
+ */
+export function mapPlaceholderType(rawType: string): PlaceholderType {
+  if (typeof rawType !== 'string' || !Object.hasOwn(OOXML_TO_PLACEHOLDER_TYPE, rawType)) return 'unknown';
+  return OOXML_TO_PLACEHOLDER_TYPE[rawType];
+}
