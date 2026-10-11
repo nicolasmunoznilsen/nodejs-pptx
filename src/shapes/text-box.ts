@@ -1,6 +1,6 @@
 import { EMU_PER_INCH } from '../ooxml/constants.js';
 import type { XmlNode } from '../ooxml/xml.js';
-import { ALIGNMENT_TO_OOXML, assertAlignment, type ParagraphAlignment } from '../text/alignment.js';
+import { alignmentToOoxml, assertAlignment, type ParagraphAlignment } from '../text/alignment.js';
 
 function inches(value: number): number { return Math.round(value * EMU_PER_INCH); }
 
@@ -17,7 +17,7 @@ export function textBoxXml(text: string, id: string, o: TextBoxOptions): XmlNode
       'a:buFont': { '@_typeface': o.fontName ?? 'Calibri' },
       'a:buChar': { '@_char': '•' },
     } : {};
-    if (alignment) pPr['@_algn'] = ALIGNMENT_TO_OOXML[alignment];
+    if (alignment) pPr['@_algn'] = alignmentToOoxml(alignment);
     return { 'a:pPr': pPr, 'a:r': { 'a:rPr': { '@_lang': 'en-US', '@_sz': String((o.fontSize ?? 18) * 100), 'a:solidFill': { 'a:srgbClr': { '@_val': (o.color ?? '000000').replace('#', '').toUpperCase() } }, 'a:latin': { '@_typeface': o.fontName ?? 'Calibri' } }, 'a:t': textContent } };
   });
   return { 'p:nvSpPr': { 'p:cNvPr': { '@_id': id, '@_name': o.name ?? `TextBox ${id}` }, 'p:cNvSpPr': { '@_txBox': '1' }, 'p:nvPr': {} }, 'p:spPr': { 'a:xfrm': { 'a:off': { '@_x': String(inches(o.x ?? 0.5)), '@_y': String(inches(o.y ?? 0.5)) }, 'a:ext': { '@_cx': String(inches(o.width ?? 4)), '@_cy': String(inches(o.height ?? 1)) } }, 'a:prstGeom': { '@_prst': 'rect', 'a:avLst': {} }, 'a:noFill': {}, 'a:ln': { 'a:noFill': {} } }, 'p:txBody': { 'a:bodyPr': { '@_wrap': 'square' }, 'a:lstStyle': {}, 'a:p': paragraphs } };
