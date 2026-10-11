@@ -6,8 +6,14 @@ import { RelationshipCollection } from '../package/relationships.js';
 import { ShapeCollection } from '../shapes/shape-collection.js';
 import { textBoxXml, type TextBoxInfo, type TextBoxOptions } from '../shapes/text-box.js';
 import type { Shape } from '../shapes/shape.js';
+import { findTextInSlide, type FindTextOptions, type TextMatch, type TextSearch } from '../text/search.js';
 import { PlaceholderCollection, placeholdersFromTree } from './placeholders.js';
 import type { SlideLayout } from '../presentation/slide-layout.js';
+
+/** Structural view of the owning presentation, used to report a slide's position. */
+export interface SlideOwner {
+  indexOfSlide(slide: Slide): number;
+}
 
 export class Slide {
   dirty = false;
@@ -15,6 +21,8 @@ export class Slide {
   private readonly relationships: RelationshipCollection;
   readonly shapes: ShapeCollection;
   layout?: SlideLayout;
+  /** @internal Set by `Presentation` so `find()` can report the slide position. */
+  owner?: SlideOwner;
 
   constructor(private readonly zip: JSZip, readonly path: string, private xml: XmlNode, relsXml?: XmlNode) {
     this.relationships = new RelationshipCollection(relsXml);
@@ -51,6 +59,15 @@ export class Slide {
     }
     if (count) this.markDirty();
     return count;
+  }
+
+  /**
+   * Finds every occurrence of `search` in this slide, with the shape, paragraph, run, and
+   * character offsets of each match. See {@link findTextInSlide}.
+   */
+  find(search: TextSearch, options: FindTextOptions = {}): TextMatch[] {
+    const index = this.owner ? this.owner.indexOfSlide(this) : -1;
+    return findTextInSlide(this, search, options, index < 0 ? 0 : index);
   }
 
   addTextBox(text: string, options: TextBoxOptions = {}): TextBoxInfo {

@@ -76,17 +76,75 @@ Slides without any text-bearing shape yield an empty `slide.text`, so filter emp
 npx vite-node examples/read-all-text.ts input.pptx
 ```
 
+## Find text across all slides
+
+`presentation.findText(search)` searches every text-bearing shape of every slide, in presentation order, and returns one entry per match with its full location: slide, shape, paragraph, run, and character offsets. `search` is a string or a regular expression.
+
+```ts
+import { Presentation } from 'nodejs-pptx';
+
+const pptx = await Presentation.open('input.pptx');
+
+for (const match of pptx.findText('FY2026')) {
+  console.log(
+    `slide ${match.slideNumber} (${match.slidePath})`,
+    `shape "${match.shapeName}" #${match.shapeId} at ${match.shapeIndex}`,
+    `paragraph ${match.paragraphIndex}, run ${match.runIndex}`,
+    `chars ${match.start}-${match.end}`,
+  );
+}
+```
+
+Each match carries:
+
+| Field | Meaning |
+| --- | --- |
+| `slideIndex` / `slideNumber` / `slidePath` | Position in `presentation.slides`, 1-based number, and slide part inside the package |
+| `shapeIndex` / `shapeId` / `shapeName` / `shapeType` | Position in `slide.shapes.all` plus `p:cNvPr` identity and kind |
+| `paragraphIndex` / `runIndex` / `runCount` | Paragraph and first affected run inside the text frame, and how many runs the match spans |
+| `start` / `end` / `matchedText` / `text` | Offsets inside `matchedText` and the matched text itself |
+| `paragraphText` / `runText` / `shapeText` | Surrounding text, for previews and context |
+| `shape` / `frame` | The live shape and `TextFrame`, so a match can be edited in place |
+
+Text split across runs of the same paragraph is matched as a single string, so `"Informe 2026"` is found even when it is stored as `"Informe "` + `"2026"`; `runIndex` then points at the first affected run and `runCount` is greater than `1`. Matches are reported in document order, and repeated hits inside one run keep their own offsets.
+
+Options:
+
+```ts
+pptx.findText('informe', { caseSensitive: false }); // also matches "Informe"
+pptx.findText(/FY\d{4}/);                            // regular expressions, matched globally
+pptx.findText('hola', { firstOnly: true });          // at most the first match per paragraph
+```
+
+Scopes narrower than the whole deck, plus the standalone helpers used by all of them:
+
+```ts
+slide.find('FY2026');                 // one slide, same match shape
+findTextInShape(shape, 'FY2026');     // one shape
+findTextInFrame(shape.textFrame, 'x'); // one text frame
+```
+
+`slide.find()` resolves the slide position through its presentation, so `slideIndex` stays correct after `slides.move()` or `slides.duplicate()`. Shapes without a text frame (pictures, and graphic frames until tables and charts are implemented) never match. An empty search string throws.
+
+`examples/find-text.ts` is a runnable version of the snippet:
+
+```bash
+npx vite-node examples/find-text.ts input.pptx "search term"
+```
+
 ## API implemented in this MVP
 
 - `Presentation.create(options?)`
 - `Presentation.open(path | Buffer)`
 - `presentation.save(path)`
 - `presentation.toBuffer()`
+- `presentation.findText(search, options?)`
 - `presentation.slides.length`
 - `presentation.slides.get(index)`
 - `presentation.slides.add()`
 - `presentation.slides.toArray()`
 - `slide.text`
+- `slide.find(search, options?)`
 - `slide.getTextBoxes()`
 - `slide.replaceText(search, replacement)`
 - `slide.addTextBox(text, options)`

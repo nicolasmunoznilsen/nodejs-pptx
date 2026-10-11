@@ -4,7 +4,7 @@ export { RelationshipCollection, type Relationship } from './package/relationshi
 export { ContentTypes } from './package/content-types.js';
 export { Presentation, inches, type PresentationOptions } from './presentation/presentation.js';
 export { SlideCollection } from './presentation/slide-collection.js';
-export { Slide } from './slides/slide.js';
+export { Slide, type SlideOwner } from './slides/slide.js';
 export { Shape, type ShapeType } from './shapes/shape.js';
 export { ShapeCollection } from './shapes/shape-collection.js';
 export { type TextBoxInfo, type TextBoxOptions } from './shapes/text-box.js';
@@ -12,6 +12,20 @@ export { TextFrame } from './text/text-frame.js';
 export { Paragraph } from './text/paragraph.js';
 export { type ParagraphAlignment, ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, alignmentToOoxml, alignmentFromOoxml } from './text/alignment.js';
 export { Run, type RunFont } from './text/run.js';
+export {
+  findTextInFrame,
+  findTextInShape,
+  findTextInShapes,
+  findTextInSlide,
+  findTextInSlides,
+  toSearchRegex,
+  type FindTextOptions,
+  type ShapeLike,
+  type SlideLike,
+  type TextMatch,
+  type TextMatchLocation,
+  type TextSearch,
+} from './text/search.js';
 export { PptxPackage } from './package/pptx-package.js';
 export { SlideLayout, SlideLayoutCollection } from './presentation/slide-layout.js';
 export { Placeholder, PlaceholderCollection, type PlaceholderType } from './slides/placeholders.js';

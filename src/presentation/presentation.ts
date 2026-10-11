@@ -7,13 +7,14 @@ import { relsPath, resolveRelationshipTarget, resolveRootRelationshipTarget } fr
 import { arr, parseXml, readAttr, xmlToString, type XmlNode } from '../ooxml/xml.js';
 import { ContentTypes } from '../package/content-types.js';
 import { RelationshipCollection } from '../package/relationships.js';
-import { blankSlideXml, Slide } from '../slides/slide.js';
+import { blankSlideXml, Slide, type SlideOwner } from '../slides/slide.js';
 import { SlideLayout, SlideLayoutCollection, loadSlideLayouts } from './slide-layout.js';
 import { SlideCollection } from './slide-collection.js';
+import { findTextInSlides, type FindTextOptions, type TextMatch, type TextSearch } from '../text/search.js';
 
 export interface PresentationOptions { title?: string; author?: string; width?: number; height?: number }
 
-export class Presentation {
+export class Presentation implements SlideOwner {
   readonly slides = new SlideCollection(this);
   slideLayouts = new SlideLayoutCollection([]);
   private zip: JSZip;
@@ -98,6 +99,18 @@ export class Presentation {
     return await this.zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   }
 
+  /**
+   * Finds every occurrence of `search` across all slides, in presentation order, and returns the
+   * location of each match: slide index/number/part, shape index/id/name, paragraph index, run
+   * index, and character offsets. Text split across runs of the same paragraph is matched as one.
+   */
+  findText(search: TextSearch, options: FindTextOptions = {}): TextMatch[] {
+    return findTextInSlides(this.slideList, search, options);
+  }
+
+  /** @internal Part of {@link SlideOwner}: position of a slide in presentation order. */
+  indexOfSlide(slide: Slide): number { return this.slideList.indexOf(slide); }
+
   /** @internal */
   addSlideInternal(layout?: SlideLayout): Slide {
     const slidePath = allocateSlidePath(this.zip);
@@ -106,6 +119,7 @@ export class Presentation {
     const selectedLayout = layout ?? this.slideLayouts.toArray()[0];
     slideRels.add(SLIDE_LAYOUT_REL, selectedLayout ? relativeSlideTarget(selectedLayout.path) : '../slideLayouts/slideLayout1.xml');
     const slide = new Slide(this.zip, slidePath, slideXml, slideRels.xml);
+    slide.owner = this;
     slide.layout = selectedLayout;
     this.slideList.push(slide);
     const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
@@ -158,6 +172,7 @@ export class Presentation {
     const xml = cloneXml(original.xmlNode);
     const relsXml = cloneXml(original.relationshipsXml);
     const slide = new Slide(this.zip, slidePath, xml, relsXml);
+    slide.owner = this;
     slide.layout = original.layout;
     this.slideList.splice(targetIndex, 0, slide);
     const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
@@ -210,6 +225,7 @@ export class Presentation {
       const file = this.zip.file(slidePath); if (!file) throw new Error(`Invalid PPTX: missing slide part ${slidePath}.`);
       const relsFile = this.zip.file(relsPath(slidePath));
       const slide = Slide.parse(this.zip, slidePath, await file.async('string'), relsFile ? await relsFile.async('string') : undefined);
+      slide.owner = this;
       const layoutRel = slide.relationshipsItems.find(r => r.type === SLIDE_LAYOUT_REL);
       const layoutPath = layoutRel ? resolveRelationshipTarget(slidePath, layoutRel.target) : undefined;
       slide.layout = layoutPath ? this.slideLayouts.toArray().find(l => l.path === layoutPath) : undefined;
