@@ -157,9 +157,10 @@ paragraph.alignment = 'center';   // <a:pPr algn="ctr"/>
 paragraph.alignment = undefined;  // removes algn, so the value is inherited again
 ```
 
-The getter returns `undefined` when the paragraph has no explicit `algn` attribute, which means the
-alignment is inherited from the paragraph/list style, the placeholder, or the theme. Assigning any
-other value throws a `TypeError`. `textFrame.alignment` is a convenience over the whole frame:
+The getter returns `undefined` when the paragraph has no explicit `algn` attribute, or when that
+attribute carries a value this library does not understand, which means the alignment is inherited
+from the paragraph/list style, the placeholder, or the theme. Assigning any other value throws a
+`TypeError`. `textFrame.alignment` is a convenience over the whole frame:
 reading returns the shared alignment only when every paragraph agrees (otherwise `undefined`), and
 writing applies it to all paragraphs. `slide.addTextBox()` also accepts `alignment`, and
 `slide.getTextBoxes()` reports it. Existing `a:pPr` attributes and children (`marL`, `indent`,
@@ -168,6 +169,12 @@ writing applies it to all paragraphs. `slide.addTextBox()` also accepts `alignme
 slide dirty, so untouched slides stay byte-identical after a round trip.
 
 `examples/basic.ts` is a runnable version of this snippet.
+
+Both directions of the mapping (`alignmentToOoxml` / `alignmentFromOoxml`, also exported) resolve
+through `Object.hasOwn` on frozen lookup tables, so names inherited from `Object.prototype`
+(`constructor`, `toString`, `__proto__`, ...) never resolve: a document containing `algn="constructor"`
+reads back as inherited alignment (`undefined`) instead of leaking an inherited value, and assigning
+such a name throws instead of writing it into the XML.
 
 `slide.replaceText()` can replace text that is split across multiple runs in the same paragraph:
 

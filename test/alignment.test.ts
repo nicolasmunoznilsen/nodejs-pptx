@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
-import { Presentation, type ParagraphAlignment } from '../src/index.js';
+import { Presentation, ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, alignmentFromOoxml, alignmentToOoxml, type ParagraphAlignment } from '../src/index.js';
+import { readAlignment, writeAlignment } from '../src/text/alignment.js';
 
 async function slideXml(pptx: Presentation): Promise<string> {
   const zip = await JSZip.loadAsync(await pptx.toBuffer());
@@ -131,3 +132,97 @@ describe('paragraph text alignment', () => {
     expect(await opened.toBuffer()).toEqual(before);
   });
 });
+
+describe('safe paragraph alignment lookups', () => {
+  const INHERITED = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', '__proto__', 'prototype', 'isPrototypeOf'];
+
+  it('resolves every supported alignment through own properties only', () => {
+    expect(alignmentToOoxml('left')).toBe('l');
+    expect(alignmentToOoxml('center')).toBe('ctr');
+    expect(alignmentToOoxml('right')).toBe('r');
+    expect(alignmentToOoxml('justify')).toBe('just');
+    expect(alignmentFromOoxml('l')).toBe('left');
+    expect(alignmentFromOoxml('ctr')).toBe('center');
+    expect(alignmentFromOoxml('r')).toBe('right');
+    expect(alignmentFromOoxml('just')).toBe('justify');
+  });
+
+  it('never resolves names inherited from Object.prototype', () => {
+    for (const inherited of INHERITED) {
+      expect(alignmentToOoxml(inherited)).toBeUndefined();
+      expect(alignmentFromOoxml(inherited)).toBeUndefined();
+      expect(() => { assertAlignmentThroughApi(inherited); }).toThrow(/Invalid paragraph alignment/);
+    }
+    // The guard must not be a truthiness check: `constructor` really is resolvable without it.
+    expect(({} as Record<string, unknown>)['constructor']).toBeTypeOf('function');
+  });
+
+  it('rejects unknown, empty, and non-string values', () => {
+    for (const raw of ['middle', 'both', 'Dist', 'JUST', ' ctr', 'ctr ', '', 'null', 'undefined', '0', 'dist']) {
+      expect(alignmentToOoxml(raw)).toBeUndefined();
+      expect(alignmentFromOoxml(raw)).toBeUndefined();
+    }
+    for (const raw of [undefined, null, 0, 1, {}, [], () => 'center']) {
+      expect(alignmentToOoxml(raw)).toBeUndefined();
+      expect(alignmentFromOoxml(raw)).toBeUndefined();
+    }
+  });
+
+  it('keeps the lookup tables frozen', () => {
+    expect(Object.isFrozen(ALIGNMENT_TO_OOXML)).toBe(true);
+    expect(Object.isFrozen(OOXML_TO_ALIGNMENT)).toBe(true);
+    expect(() => { (ALIGNMENT_TO_OOXML as Record<string, string>).center = 'evil'; }).toThrow();
+    expect(alignmentToOoxml('center')).toBe('ctr');
+  });
+
+  it('refuses to write an inherited name into the document', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    const shape = slide.addTextBox('unsafe', { name: 'Unsafe' });
+    const paragraph = slide.shapes.findById(shape.id)!.textFrame.paragraphs[0];
+    for (const inherited of INHERITED) {
+      expect(() => { paragraph.alignment = inherited as ParagraphAlignment; }).toThrow(/Invalid paragraph alignment/);
+      expect(() => slide.addTextBox('x', { name: `More ${inherited}`, alignment: inherited as ParagraphAlignment })).toThrow(/Invalid paragraph alignment/);
+    }
+    expect(await slideXml(pptx)).not.toContain('algn=');
+    expect(paragraph.alignment).toBeUndefined();
+  });
+
+  it('reads inherited or unknown algn values as inherited alignment', async () => {
+    for (const raw of ['constructor', '__proto__', 'toString', 'valueOf', 'dist', 'justLow', 'CTR']) {
+      const pptx = Presentation.create();
+      pptx.slides.add().addTextBox('external', { name: 'External' });
+      const zip = await JSZip.loadAsync(await pptx.toBuffer());
+      const path = 'ppt/slides/slide1.xml';
+      const xml = await zip.file(path)!.async('string');
+      zip.file(path, xml.replace('<a:pPr/>', `<a:pPr algn="${raw}"/>`));
+      const opened = await Presentation.open(await zip.generateAsync({ type: 'nodebuffer' }));
+      const paragraph = opened.slides.get(0).shapes.findByName('External')!.textFrame.paragraphs[0];
+      expect(paragraph.alignment).toBeUndefined();
+      expect(opened.slides.get(0).getTextBoxes()[0].alignment).toBeUndefined();
+      // Editing it afterwards still works and replaces the unsupported value.
+      paragraph.alignment = 'center';
+      expect(paragraph.alignment).toBe('center');
+      expect(await slideXml(opened)).toContain('<a:pPr algn="ctr"/>');
+    }
+  });
+
+  it('guards the low-level helpers as well', () => {
+    expect(readAlignment({ '@_algn': 'constructor' })).toBeUndefined();
+    expect(readAlignment({ '@_algn': 'ctr' })).toBe('center');
+    expect(readAlignment(undefined)).toBeUndefined();
+    const written: Record<string, unknown> = {};
+    expect(() => writeAlignment(written, 'constructor' as ParagraphAlignment)).toThrow(/Invalid paragraph alignment/);
+    expect(written).toEqual({});
+    writeAlignment(written, 'justify');
+    expect(written['@_algn']).toBe('just');
+    writeAlignment(written, undefined);
+    expect(written['@_algn']).toBeUndefined();
+  });
+});
+
+/** Runs the public setter path so inherited names must be rejected before touching XML. */
+function assertAlignmentThroughApi(value: unknown): ParagraphAlignment | undefined {
+  const pptx = Presentation.create();
+  return pptx.slides.add().addTextBox('x', { alignment: value as ParagraphAlignment }).textFrame.paragraphs[0].alignment;
+}
