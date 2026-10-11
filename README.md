@@ -38,6 +38,44 @@ firstSlide.addTextBox('Reviewed by Finance', { x: 0.7, y: 4.8, width: 4, height:
 await pptx.save('output.pptx');
 ```
 
+## Read text from all slides
+
+`slide.text` returns the text of every text-bearing shape on a slide, one paragraph per line, in document order. Iterate `pptx.slides` to read the whole deck; the order comes from the `p:sldId` relationships in `ppt/presentation.xml`, not from ZIP file names.
+
+```ts
+import { Presentation } from 'nodejs-pptx';
+
+const pptx = await Presentation.open('input.pptx');
+
+for (const [index, slide] of pptx.slides.toArray().entries()) {
+  console.log(`Slide ${index + 1}`);
+  for (const line of slide.text.split('\n')) {
+    if (line.trim()) console.log(`  ${line}`);
+  }
+}
+```
+
+To know which shape and paragraph each line came from, walk `slide.shapes` and the `TextFrame -> Paragraph -> Run` hierarchy instead:
+
+```ts
+for (const [index, slide] of pptx.slides.toArray().entries()) {
+  for (const shape of slide.shapes.all) {
+    if (!shape.hasTextFrame) continue;
+    shape.textFrame.paragraphs.forEach((paragraph, paragraphIndex) => {
+      if (paragraph.text) console.log(index + 1, shape.name, shape.id, paragraphIndex, paragraph.text);
+    });
+  }
+}
+```
+
+Slides without any text-bearing shape yield an empty `slide.text`, so filter empty lines when building a search index or a transcript. Shapes such as pictures and graphic frames (tables and charts) currently contribute no text; see [`ROADMAP.md`](ROADMAP.md).
+
+`examples/read-all-text.ts` is a runnable version of both snippets:
+
+```bash
+npx vite-node examples/read-all-text.ts input.pptx
+```
+
 ## API implemented in this MVP
 
 - `Presentation.create(options?)`
@@ -47,6 +85,7 @@ await pptx.save('output.pptx');
 - `presentation.slides.length`
 - `presentation.slides.get(index)`
 - `presentation.slides.add()`
+- `presentation.slides.toArray()`
 - `slide.text`
 - `slide.getTextBoxes()`
 - `slide.replaceText(search, replacement)`
@@ -143,6 +182,6 @@ npm run lint
 npm test
 ```
 
-See `examples/basic.ts` for a complete example.
+See `examples/basic.ts` for a complete create/save example and `examples/read-all-text.ts` for reading text from all slides.
 
 For planned architecture and python-pptx parity work, see [`ROADMAP.md`](ROADMAP.md).
