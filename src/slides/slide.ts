@@ -37,6 +37,7 @@ export class Slide {
       y: shape.y,
       width: shape.width,
       height: shape.height,
+      alignment: shape.textFrame.alignment,
     }));
   }
 
