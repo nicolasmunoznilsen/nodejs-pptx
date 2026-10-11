@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import { Presentation, type ParagraphAlignment } from '../src/index.js';
+import { ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, isAlignment } from '../src/text/alignment.js';
 
 async function slideXml(pptx: Presentation): Promise<string> {
   const zip = await JSZip.loadAsync(await pptx.toBuffer());
@@ -120,6 +121,50 @@ describe('paragraph text alignment', () => {
     const paragraph = slide.shapes.findById(shape.id)!.textFrame.paragraphs[0];
     expect(() => { paragraph.alignment = 'middle' as ParagraphAlignment; }).toThrow(/Invalid paragraph alignment/);
     expect(() => slide.addTextBox('x', { alignment: 'both' as ParagraphAlignment })).toThrow(/Invalid paragraph alignment/);
+  });
+
+  it('rejects inherited property names as alignment values', () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    const shape = slide.addTextBox('proto', { name: 'Proto' });
+    const paragraph = slide.shapes.findById(shape.id)!.textFrame.paragraphs[0];
+    const textFrame = slide.shapes.findById(shape.id)!.textFrame;
+    const inherited = [
+      'toString', 'constructor', 'hasOwnProperty', 'valueOf', 'isPrototypeOf', '__proto__', 'propertyIsEnumerable',
+    ];
+
+    for (const name of inherited) {
+      expect(() => { paragraph.alignment = name as ParagraphAlignment; }).toThrow(/Invalid paragraph alignment/);
+      expect(() => { textFrame.alignment = name as ParagraphAlignment; }).toThrow(/Invalid paragraph alignment/);
+      expect(() => slide.addTextBox('x', { alignment: name as ParagraphAlignment })).toThrow(/Invalid paragraph alignment/);
+      expect(paragraph.alignment).toBeUndefined();
+    }
+
+    // Nothing leaked into the XML and the document still serializes.
+    expect(() => pptx.toBuffer()).not.toThrow();
+  });
+
+  it('never resolves an inherited name through the alignment lookup tables', async () => {
+    for (const name of ['toString', 'constructor', 'hasOwnProperty', '__proto__', 'valueOf']) {
+      expect(ALIGNMENT_TO_OOXML[name as ParagraphAlignment]).toBeUndefined();
+      expect(OOXML_TO_ALIGNMENT[name]).toBeUndefined();
+      expect(isAlignment(name)).toBe(false);
+    }
+    expect(isAlignment('center')).toBe(true);
+    expect(isAlignment('__proto__')).toBe(false);
+
+    // An unknown `algn` value coming from another tool reads as inherited, not as a function.
+    const pptx = Presentation.create();
+    pptx.slides.add().addTextBox('external', { name: 'External' });
+    const zip = await JSZip.loadAsync(await pptx.toBuffer());
+    let xml = await zip.file('ppt/slides/slide1.xml')!.async('string');
+    xml = xml.replace('<a:pPr/>', '<a:pPr algn="dist"/>');
+    zip.file('ppt/slides/slide1.xml', xml);
+    const opened = await Presentation.open(await zip.generateAsync({ type: 'nodebuffer' }));
+    const paragraph = opened.slides.get(0).shapes.findByName('External')!.textFrame.paragraphs[0];
+    expect(paragraph.alignment).toBeUndefined();
+    expect(typeof paragraph.alignment).not.toBe('function');
+    expect(opened.slides.get(0).getTextBoxes()[0].alignment).toBeUndefined();
   });
 
   it('leaves untouched slides byte-identical when reading alignment', async () => {

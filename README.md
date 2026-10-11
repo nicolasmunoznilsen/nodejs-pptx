@@ -156,12 +156,7 @@ paragraph.alignment = 'center';   // <a:pPr algn="ctr"/>
 paragraph.alignment = undefined;  // removes algn, so the value is inherited again
 ```
 
-A getter returns `undefined` when the paragraph has no explicit `algn` attribute, which means the
-alignment is inherited from the paragraph/list style, the placeholder, or the theme. Any other
-value throws a `TypeError`. `textFrame.alignment` is a convenience over the whole frame: reading
-returns the shared alignment only when every paragraph agrees, and writing applies it to all
-paragraphs. `slide.addTextBox()` also accepts `alignment`, and `slide.getTextBoxes()` reports it.
-Existing `a:pPr` attributes and children (`marL`, `indent`, `a:buChar`, `a:lnSpc`, ...) are kept;
+undefinedExisting `a:pPr` attributes and children (`marL`, `indent`, `a:buChar`, `a:lnSpc`, ...) are kept;
 a newly created `a:pPr` is inserted as the first child of `a:p` as required by the schema.
 
 `slide.replaceText()` can replace text that is split across multiple runs in the same paragraph:
