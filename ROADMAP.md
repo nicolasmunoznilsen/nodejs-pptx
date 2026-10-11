@@ -27,6 +27,7 @@ src/
     shape-collection.ts
     text-box.ts
   text/
+    replace.ts
     text-frame.ts
     paragraph.ts
     run.ts
@@ -38,7 +39,7 @@ src/
 | --- | --- | --- |
 | Slides | Add and retrieve slides, allocate safe slide part names | Delete, duplicate, reorder, richer layouts, masters, and backgrounds |
 | Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
-| Text | `TextFrame -> Paragraph -> Run`, basic run font editing, paragraph alignment (`left`/`center`/`right`/`justify`), cross-run `replaceText` | Remaining paragraph formatting: margins, autofit, bullets beyond `buChar`, line spacing, hyperlinks, robust rich-text rewrite |
+| Text | `TextFrame -> Paragraph -> Run`, basic run font editing, paragraph alignment (`left`/`center`/`right`/`justify`), cross-run `replaceText`, presentation-wide `presentation.replaceText()` (slides, placeholders, grouped shapes, optional layouts) | Remaining paragraph formatting: margins, autofit, bullets beyond `buChar`, line spacing, hyperlinks, robust rich-text rewrite |
 | Images | Not implemented | Add, read, replace, crop, and preserve relationships/media |
 | Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
@@ -54,6 +55,8 @@ Text now exposes the intended hierarchy:
 ```txt
 TextFrame -> Paragraph -> Run
 ```
+
+The cross-run engine lives in `src/text/replace.ts` and is shared by `slide.replaceText()`, `presentation.replaceText()` (every slide, in presentation order, including placeholders and shapes nested inside groups), and `SlideLayout.replaceText()` (opt-in through `{ includeLayouts: true }`).
 
 `replaceText()` can match text split across multiple runs within the same paragraph, for example `"Informe " + "2026"`. The replacement is written to the first affected run to preserve that run's formatting, and subsequent affected runs are cleared or trimmed. Regex support is intentionally conservative: matching across runs is supported within a paragraph, but replacement capture expansion is not yet modeled.
 

@@ -7,6 +7,7 @@ import { ShapeCollection } from '../shapes/shape-collection.js';
 import { textBoxXml, type TextBoxInfo, type TextBoxOptions } from '../shapes/text-box.js';
 import type { Shape } from '../shapes/shape.js';
 import { PlaceholderCollection, placeholdersFromTree } from './placeholders.js';
+import { replaceInRuns } from '../text/replace.js';
 import type { SlideLayout } from '../presentation/slide-layout.js';
 
 export class Slide {
@@ -41,9 +42,14 @@ export class Slide {
     }));
   }
 
+  /**
+   * Replace every occurrence of `search` in this slide, including matches that cross run
+   * boundaries inside a paragraph, and return how many replacements were made. Placeholder shapes
+   * and shapes nested inside groups are covered; only `a:t` text nodes are touched.
+   */
   replaceText(search: string | RegExp, replacement: string): number {
     let count = 0;
-    for (const shape of this.shapes.all) {
+    for (const shape of this.shapes.allDescendants) {
       if (!shape.hasTextFrame) continue;
       for (const paragraph of shape.textFrame.paragraphs) {
         count += replaceInRuns(paragraph.runs, search, replacement);
@@ -80,49 +86,6 @@ export class Slide {
 
   static parse(zip: JSZip, path: string, xmlString: string, relsString?: string): Slide {
     return new Slide(zip, path, parseXml(path, xmlString), relsString ? parseXml(relsPath(path), relsString) : undefined);
-  }
-}
-
-function replaceInRuns(runs: Array<{ text: string }>, search: string | RegExp, replacement: string): number {
-  const full = runs.map(r => r.text).join('');
-  const matches = typeof search === 'string' ? findStringMatches(full, search) : findRegexMatches(full, search);
-  for (const match of matches.reverse()) applyReplacement(runs, match.start, match.end, replacement);
-  return matches.length;
-}
-
-function findStringMatches(text: string, needle: string): Array<{ start: number; end: number }> {
-  if (!needle) return [];
-  const matches: Array<{ start: number; end: number }> = [];
-  let start = text.indexOf(needle);
-  while (start >= 0) {
-    matches.push({ start, end: start + needle.length });
-    start = text.indexOf(needle, start + needle.length);
-  }
-  return matches;
-}
-
-function findRegexMatches(text: string, regex: RegExp): Array<{ start: number; end: number }> {
-  const flags = regex.flags.includes('g') ? regex.flags : `${regex.flags}g`;
-  const clone = new RegExp(regex.source, flags);
-  const matches: Array<{ start: number; end: number }> = [];
-  for (const match of text.matchAll(clone)) {
-    if (match.index === undefined || match[0] === '') continue;
-    matches.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return matches;
-}
-
-function applyReplacement(runs: Array<{ text: string }>, start: number, end: number, replacement: string): void {
-  let pos = 0;
-  let wrote = false;
-  for (const run of runs) {
-    const runStart = pos;
-    const runEnd = pos + run.text.length;
-    pos = runEnd;
-    if (runEnd <= start || runStart >= end) continue;
-    const before = run.text.slice(0, Math.max(0, start - runStart));
-    const after = run.text.slice(Math.max(0, end - runStart));
-    if (!wrote) { run.text = before + replacement + after; wrote = true; } else { run.text = after; }
   }
 }
 

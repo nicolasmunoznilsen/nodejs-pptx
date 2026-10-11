@@ -76,6 +76,32 @@ Slides without any text-bearing shape yield an empty `slide.text`, so filter emp
 npx vite-node examples/read-all-text.ts input.pptx
 ```
 
+## Replace text across the whole presentation
+
+`presentation.replaceText()` applies the same replacement to every slide, in presentation order, and returns the total number of replacements:
+
+```ts
+import { Presentation } from 'nodejs-pptx';
+
+const pptx = await Presentation.open('input.pptx');
+const replaced = pptx.replaceText('FY2026', 'FY2027');
+if (replaced) await pptx.save('output.pptx');
+```
+
+It covers the cases that per-slide loops usually miss: placeholder text, shapes nested inside `p:grpSp` groups, and matches that cross run boundaries inside a paragraph. Regex searches work the same way as in `slide.replaceText()`.
+
+Layout parts are template content, so they are left untouched unless you ask for them explicitly:
+
+```ts
+const replaced = pptx.replaceText('Click to edit', 'Add a title', { includeLayouts: true });
+```
+
+`examples/replace-in-presentation.ts` is a runnable version:
+
+```bash
+npx vite-node examples/replace-in-presentation.ts input.pptx FY2026 FY2027
+```
+
 ## API implemented in this MVP
 
 - `Presentation.create(options?)`
@@ -86,6 +112,7 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `presentation.slides.get(index)`
 - `presentation.slides.add()`
 - `presentation.slides.toArray()`
+- `presentation.replaceText(search, replacement, options?)`
 - `slide.text`
 - `slide.getTextBoxes()`
 - `slide.replaceText(search, replacement)`
@@ -95,6 +122,7 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `slide.shapes.findByName(name)`
 - `slide.shapes.findById(id)`
 - `slide.shapes.all`
+- `slide.shapes.allDescendants`
 - `shape.textFrame.paragraphs`
 - `paragraph.runs`
 - `paragraph.alignment`
@@ -124,7 +152,7 @@ Implemented shape operations are intentionally read-focused for this phase:
 - `slide.shapes.all`
 - base `Shape` properties: `id`, `name`, `type`, `x`, `y`, `width`, `height`, `hasTextFrame`, `textFrame`
 
-Text boxes and text-bearing autoshapes expose `textFrame`; unknown shape types are preserved and surfaced as generic shapes.
+Text boxes and text-bearing autoshapes expose `textFrame`; unknown shape types are preserved and surfaced as generic shapes. `slide.shapes.all` returns the top-level shapes of the shape tree, while `slide.shapes.allDescendants` also descends into `p:grpSp` groups in document order; `replaceText()` uses the descendant view so grouped text is not skipped.
 
 ## TextFrame, Paragraph, and Run API
 
@@ -182,7 +210,7 @@ such a name throws instead of writing it into the XML.
 slide.replaceText('Informe 2026', 'Informe 2027');
 ```
 
-When a match crosses run boundaries, the replacement is written into the first affected run and later affected runs are cleared or trimmed so the first run's formatting is preserved. Regex replacements are supported for text within a paragraph, but replacement capture expansion is not implemented yet; pass the final replacement string explicitly.
+When a match crosses run boundaries, the replacement is written into the first affected run and later affected runs are cleared or trimmed so the first run's formatting is preserved. Regex replacements are supported for text within a paragraph, but replacement capture expansion is not implemented yet; pass the final replacement string explicitly. The same engine backs `presentation.replaceText()`, which applies it to every slide of the deck.
 
 ## Internal architecture
 
@@ -202,7 +230,7 @@ This phase deliberately does not add images, tables, charts, notes, animations, 
 
 ## Preservation model
 
-When opening a `.pptx`, the library reads `_rels/.rels`, resolves `ppt/presentation.xml`, reads `ppt/_rels/presentation.xml.rels`, locates the real slide parts referenced by `p:sldId`, and preserves every other ZIP entry unchanged. `replaceText` mutates only `a:t` text nodes in the target slide XML; it does not rebuild unrelated OOXML.
+When opening a `.pptx`, the library reads `_rels/.rels`, resolves `ppt/presentation.xml`, reads `ppt/_rels/presentation.xml.rels`, locates the real slide parts referenced by `p:sldId`, and preserves every other ZIP entry unchanged. `replaceText` mutates only `a:t` text nodes in the visited slide (and, with `includeLayouts`, layout) XML; it does not rebuild unrelated OOXML, and parts whose text did not change are not rewritten on save.
 
 ## Not implemented yet
 

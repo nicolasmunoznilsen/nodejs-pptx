@@ -2,7 +2,7 @@ export { EMU_PER_INCH } from './ooxml/constants.js';
 export { resolveRelationshipTarget, resolveRootRelationshipTarget } from './ooxml/paths.js';
 export { RelationshipCollection, type Relationship } from './package/relationships.js';
 export { ContentTypes } from './package/content-types.js';
-export { Presentation, inches, type PresentationOptions } from './presentation/presentation.js';
+export { Presentation, inches, type PresentationOptions, type PresentationReplaceOptions } from './presentation/presentation.js';
 export { SlideCollection } from './presentation/slide-collection.js';
 export { Slide } from './slides/slide.js';
 export { Shape, type ShapeType } from './shapes/shape.js';

@@ -13,6 +13,11 @@ import { SlideCollection } from './slide-collection.js';
 
 export interface PresentationOptions { title?: string; author?: string; width?: number; height?: number }
 
+export interface PresentationReplaceOptions {
+  /** Also rewrite the text of the layout parts referenced by the deck. Defaults to `false`. */
+  includeLayouts?: boolean;
+}
+
 export class Presentation {
   readonly slides = new SlideCollection(this);
   slideLayouts = new SlideLayoutCollection([]);
@@ -57,7 +62,7 @@ export class Presentation {
     zip.file('ppt/slideMasters/slideMaster1.xml', slideMasterXml());
     zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${SLIDE_LAYOUT_REL}" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${THEME_REL}" Target="../theme/theme1.xml"/></Relationships>`);
     const p = new Presentation(zip, presXml, presRels, contentTypes);
-    p.slideLayouts = new SlideLayoutCollection([new SlideLayout('ppt/slideLayouts/slideLayout1.xml', parseXml('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml()), { path: 'ppt/slideMasters/slideMaster1.xml' })]);
+    p.slideLayouts = new SlideLayoutCollection([new SlideLayout('ppt/slideLayouts/slideLayout1.xml', parseXml('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml()), { path: 'ppt/slideMasters/slideMaster1.xml' }, zip)]);
     p.coreXml = parseXml('docProps/core.xml', coreXmlString);
     p.presentationDirty = true;
     p.presentationRels.dirty = true;
@@ -90,11 +95,31 @@ export class Presentation {
   }
 
   async save(filePath: string): Promise<void> { await writeFile(filePath, await this.toBuffer()); }
+
+  /**
+   * Replace `search` with `replacement` across the whole deck: every slide, in presentation order,
+   * including placeholders, shapes nested inside groups, and matches that cross run boundaries
+   * inside a paragraph. Returns the total number of replacements performed.
+   *
+   * With `{ includeLayouts: true }` the layout parts referenced by the deck are rewritten as well,
+   * which changes the text inherited by every slide that uses those layouts.
+   *
+   * ```ts
+   * const replaced = pptx.replaceText('FY2026', 'FY2027');
+   * ```
+   */
+  replaceText(search: string | RegExp, replacement: string, options: PresentationReplaceOptions = {}): number {
+    let count = 0;
+    for (const slide of this.slideList) count += slide.replaceText(search, replacement);
+    if (options.includeLayouts) for (const layout of this.slideLayouts.toArray()) count += layout.replaceText(search, replacement);
+    return count;
+  }
   async toBuffer(): Promise<Buffer> {
     this.persistPresentationIfDirty();
     this.persistCoreIfDirty();
     this.contentTypes.save(this.zip);
     this.slideList.forEach(s => s.persistIfDirty());
+    this.slideLayouts.toArray().forEach(l => l.persistIfDirty());
     return await this.zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   }
 
