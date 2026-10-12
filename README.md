@@ -98,6 +98,12 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `shape.textFrame.paragraphs`
 - `paragraph.runs`
 - `paragraph.alignment`
+- `paragraph.level`
+- `paragraph.leftMargin`
+- `paragraph.indentation`
+- `paragraph.spaceBefore`
+- `paragraph.spaceAfter`
+- `paragraph.bullet`
 - `textFrame.alignment`
 - `run.text`
 - `run.font`
@@ -175,6 +181,57 @@ through `Object.hasOwn` on frozen lookup tables, so names inherited from `Object
 (`constructor`, `toString`, `__proto__`, ...) never resolve: a document containing `algn="constructor"`
 reads back as inherited alignment (`undefined`) instead of leaking an inherited value, and assigning
 such a name throws instead of writing it into the XML.
+
+### Paragraph formatting: level, indentation, spacing, and bullets
+
+`src/text/paragraph-format.ts` follows the same pattern as `alignment.ts`: frozen lookup tables and
+`assert*` guards that throw a descriptive `TypeError`, exposed through `Paragraph` accessors that
+read through the existing `a:pPr` node and create it (as the first child of `a:p`) only on write.
+In every case `undefined` means "inherited": the attribute or child is removed and PowerPoint
+resolves the value through the list style, the placeholder, or the theme.
+
+```ts
+const paragraph = slide.shapes.findByName('Body')!.textFrame.paragraphs[0];
+
+paragraph.level = 1;                  // <a:pPr lvl="1">        (integer 0..8)
+paragraph.leftMargin = 457200;        // a:pPr/@marL, integer EMU (0.5")
+paragraph.indentation = -228600;      // a:pPr/@indent, integer EMU (hanging first line)
+paragraph.spaceBefore = 12;           // <a:spcBef><a:spcPts val="1200"/></a:spcBef>  (points)
+paragraph.spaceAfter = 6;             // <a:spcAft><a:spcPts val="600"/></a:spcAft>
+paragraph.bullet = { type: 'char', char: '◦' };         // <a:buChar char="◦"/>
+paragraph.bullet = 'autoNumber';      // <a:buAutoNum type="arabicPeriod"/>
+paragraph.bullet = { type: 'autoNumber', autoNumber: 'alphaLcParen', number: 3 };
+paragraph.bullet = 'none';            // <a:buNone/>
+paragraph.bullet = undefined;         // removes every marker: the bullet is inherited again
+```
+
+| Accessor | OOXML | Units / values |
+| --- | --- | --- |
+| `paragraph.level` | `a:pPr/@lvl` | integer `0`..`8` (`MIN_PARAGRAPH_LEVEL` / `MAX_PARAGRAPH_LEVEL`) |
+| `paragraph.leftMargin` | `a:pPr/@marL` | integer EMU (`1 in = 914400`, `1 pt = 12700`) |
+| `paragraph.indentation` | `a:pPr/@indent` | integer EMU, negative pulls the first line left |
+| `paragraph.spaceBefore` | `a:pPr/a:spcBef/a:spcPts/@val` | points; `12` pt is stored as `val="1200"` centipoints |
+| `paragraph.spaceAfter` | `a:pPr/a:spcAft/a:spcPts/@val` | points, same centipoint encoding |
+| `paragraph.bullet` | `a:buNone` / `a:buChar` / `a:buAutoNum` | `'none'`, `'char'` (`char`), `'autoNumber'` (`autoNumber`, `number`) |
+
+Spacing is documented in typographic points (`1 pt = 12700 EMU = 100` XML centipoints); the
+exported helpers `pointsToCentipoints`, `centipointsToPoints`, `pointsToEmu`, and `emuToPoints`
+convert between the units. Spacing the document expresses as a percentage (`a:spcPct`) is not
+modeled: it reads back as `undefined` and is left untouched.
+
+Children of `a:pPr` are kept in `CT_TextParagraphProperties` order (`lnSpc`, `spcBef`, `spcAft`,
+`buClrTx`/`buClr`, `buSzTx`.., `buFontTx`/`buFont`, `buNone`/`buAutoNum`/`buChar`, `tabLst`,
+`defRPr`, `extLst`; see the exported `PARAGRAPH_PROPERTY_ORDER` and `orderParagraphProperties`).
+Writing never destroys pre-existing attributes (`marL`, `indent`, `lvl`, `rtl`, `algn`) or children
+(`a:lnSpc`, `a:buClr`, `a:buSzPct`, `a:buFont`, `a:tabLst`, `a:defRPr`), and unknown children keep
+their relative order at the end. Assigning a value that does not change the paragraph does not mark
+the package dirty, so slides that are only read stay byte-identical after a round trip.
+
+`paragraph.bullet` accepts either a bare kind (`'none'`, `'char'`, `'autoNumber'`) or a
+`ParagraphBullet` object; `'char'` defaults its glyph to `•` and `'autoNumber'` to
+`DEFAULT_AUTO_NUMBER_TYPE` (`arabicPeriod`, the full `ST_TextAutoNumber` subset living in
+`AUTO_NUMBER_TO_OOXML`). An unknown `a:buAutoNum/@type` in a document reads back as that default
+instead of leaking an inherited property, mirroring how `algn="constructor"` is handled.
 
 `slide.replaceText()` can replace text that is split across multiple runs in the same paragraph:
 

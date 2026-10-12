@@ -11,6 +11,31 @@ export { type TextBoxInfo, type TextBoxOptions } from './shapes/text-box.js';
 export { TextFrame } from './text/text-frame.js';
 export { Paragraph } from './text/paragraph.js';
 export { type ParagraphAlignment, ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, alignmentToOoxml, alignmentFromOoxml } from './text/alignment.js';
+export {
+  type ParagraphAutoNumberType,
+  type ParagraphBullet,
+  type ParagraphBulletInput,
+  type ParagraphBulletType,
+  type ParagraphSpacingKind,
+  AUTO_NUMBER_TO_OOXML,
+  OOXML_TO_AUTO_NUMBER,
+  PARAGRAPH_PROPERTY_ORDER,
+  MIN_PARAGRAPH_LEVEL,
+  MAX_PARAGRAPH_LEVEL,
+  EMU_PER_POINT,
+  DEFAULT_AUTO_NUMBER_TYPE,
+  autoNumberToOoxml,
+  autoNumberFromOoxml,
+  pointsToCentipoints,
+  centipointsToPoints,
+  pointsToEmu,
+  emuToPoints,
+  assertParagraphLevel,
+  assertEmu,
+  assertPoints,
+  assertBullet,
+  orderParagraphProperties,
+} from './text/paragraph-format.js';
 export { Run, type RunFont } from './text/run.js';
 export { PptxPackage } from './package/pptx-package.js';
 export { SlideLayout, SlideLayoutCollection } from './presentation/slide-layout.js';
