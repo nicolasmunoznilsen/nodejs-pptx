@@ -5,6 +5,8 @@ import { arr, parseXml, readAttr, walk, xmlToString, type XmlNode } from '../oox
 import { RelationshipCollection } from '../package/relationships.js';
 import { ShapeCollection } from '../shapes/shape-collection.js';
 import { textBoxXml, type TextBoxInfo, type TextBoxOptions } from '../shapes/text-box.js';
+import { tableXml, type TableInfo, type TableOptions } from '../shapes/table-xml.js';
+import type { Table } from '../shapes/table.js';
 import type { Shape } from '../shapes/shape.js';
 import { PlaceholderCollection, placeholdersFromTree } from './placeholders.js';
 import type { SlideLayout } from '../presentation/slide-layout.js';
@@ -61,6 +63,21 @@ export class Slide {
     this.persist();
     return this.getTextBoxes().at(-1)!;
   }
+
+  /** Appends a `p:graphicFrame` table to the shape tree and returns the resulting {@link Table}. */
+  addTable(data: string[][], options: TableOptions = {}): Table {
+    const frames = arr(this.spTree['p:graphicFrame'] as XmlNode | XmlNode[] | undefined);
+    const id = nextShapeId(this.spTree);
+    const frame = tableXml(data, id, options);
+    frames.push(frame);
+    this.spTree['p:graphicFrame'] = frames;
+    this.persist();
+    return this.tables.at(-1)!;
+  }
+
+  /** Every table in this slide, in shape-tree order. */
+  get tables(): Table[] { return this.shapes.tables; }
+  getTables(): TableInfo[] { return this.tables.map(table => table.info); }
 
   persist(): void { this.markDirty(); this.zip.file(this.path, xmlToString(this.xml)); }
   persistIfDirty(): void {

@@ -8,6 +8,8 @@ export { Slide } from './slides/slide.js';
 export { Shape, type ShapeType } from './shapes/shape.js';
 export { ShapeCollection } from './shapes/shape-collection.js';
 export { type TextBoxInfo, type TextBoxOptions } from './shapes/text-box.js';
+export { Table, TableRow, TableCell, TableColumn } from './shapes/table.js';
+export { type TableInfo, type TableOptions, tableXml, TABLE_GRAPHIC_DATA_URI } from './shapes/table-xml.js';
 export { TextFrame } from './text/text-frame.js';
 export { Paragraph } from './text/paragraph.js';
 export { type ParagraphAlignment, ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, alignmentToOoxml, alignmentFromOoxml } from './text/alignment.js';

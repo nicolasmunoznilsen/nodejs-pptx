@@ -40,7 +40,7 @@ src/
 | Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
 | Text | `TextFrame -> Paragraph -> Run`, basic run font editing, paragraph alignment (`left`/`center`/`right`/`justify`), cross-run `replaceText` | Remaining paragraph formatting: margins, autofit, bullets beyond `buChar`, line spacing, hyperlinks, robust rich-text rewrite |
 | Images | Not implemented | Add, read, replace, crop, and preserve relationships/media |
-| Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
+| Tables | Basic create and edit: `slide.addTable(data, options)`, rows/columns/cells, cell text (get/set), row height, column width, `addRow()` | Merges, cell/table styles (fills, borders, table styles), text formatting inside cells |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
 | Placeholders | Not implemented | Titles, content, pictures, and inheritance from layouts |
 | Notes | Not implemented | Read, create, and modify speaker notes |
@@ -62,10 +62,10 @@ TextFrame -> Paragraph -> Run
 1. Continue hardening the base: package parts, relationships, content types, identifiers, and round-trip preservation.
 2. Expand the shape and text models: `slide.shapes`, generic shapes, paragraphs, runs, and formatting.
 3. Implement real slide operations: layouts, masters, placeholders, delete, move, and duplicate.
-4. Add images and tables.
+4. Add images, and extend tables with merges and cell/table styles.
 5. Add charts and speaker notes.
 6. Build a compatibility corpus with PPTX files from PowerPoint, LibreOffice, and Google Slides, including open-save-open round-trip tests.
 
 ## Current restrictions
 
-Do not add images, tables, charts, notes, animations, SmartArt, audio, or video until the shape/text abstractions and round-trip behavior are stronger.
+Do not add images, charts, notes, animations, SmartArt, audio, or video until the shape/text abstractions and round-trip behavior are stronger. Basic tables are implemented (create, read/edit rows, columns and cells, row height, column width, `addRow()`); table merges and cell/table styles remain pending.

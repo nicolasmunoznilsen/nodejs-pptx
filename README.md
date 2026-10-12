@@ -90,6 +90,14 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `slide.getTextBoxes()`
 - `slide.replaceText(search, replacement)`
 - `slide.addTextBox(text, options)`
+- `slide.addTable(data, options)` — `data` is a `string[][]`; options accept `x`, `y`, `width`, `height`, `columnWidths`, `rowHeights`, `name`, `firstRow`, `banding` (inches)
+- `slide.tables` / `slide.getTables()`
+- `table.rows`, `table.columns`, `table.cell(r, c)`, `table.row(i)`, `table.column(j)`, `table.data`, `table.info`
+- `table.addRow(values?)`, `table.rowItems`, `table.columnItems`, `table.forEachRow(cb)`, `table.forEachColumn(cb)`
+- `cell.text` (get/set, one `a:p` per line), `row.height` and `column.width` in inches
+- `slide.shapes.tables`
+
+`Table` reports `x`, `y`, `width` and `height` in inches, unlike the raw EMU values exposed by `Shape`, so units depend on the class returned by `slide.shapes.get(index)`. A table frame's transform is read from the presentationml `p:xfrm` (what PowerPoint and LibreOffice write), falling back to a legacy `a:xfrm`, and is always edited in place so open→edit→save keeps exactly one transform per `p:graphicFrame`.
 - `slide.shapes.length`
 - `slide.shapes.get(index)`
 - `slide.shapes.findByName(name)`
@@ -198,7 +206,7 @@ src/
   text/
 ```
 
-This phase deliberately does not add images, tables, charts, notes, animations, SmartArt, audio, or video. The focus is internal robustness, conservative round-tripping, path resolution, IDs, relationships, and a maintainable shape/text model.
+This phase deliberately does not add images, charts, notes, animations, SmartArt, audio, or video. Tables are supported at a basic level only: `slide.addTable()` creates a `p:graphicFrame` table, and rows, columns, cells, cell text, row heights and column widths can be read and edited (plus `addRow()`); cell merges and cell/table styles are not implemented yet. The focus is internal robustness, conservative round-tripping, path resolution, IDs, relationships, and a maintainable shape/text model.
 
 ## Preservation model
 
@@ -206,7 +214,7 @@ When opening a `.pptx`, the library reads `_rels/.rels`, resolves `ppt/presentat
 
 ## Not implemented yet
 
-Tables, charts, images, notes, animations, and SmartArt are intentionally out of scope for this MVP.
+Basic tables are implemented (create a table, read and edit rows, columns and cells, row height, column width, `addRow()`). Table merges and cell/table styles are still pending; charts, images, notes, animations, and SmartArt are intentionally out of scope for this MVP.
 
 ## Development
 
