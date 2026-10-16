@@ -122,9 +122,29 @@ Implemented shape operations are intentionally read-focused for this phase:
 - `slide.shapes.findByName(name)`
 - `slide.shapes.findById(id)`
 - `slide.shapes.all`
-- base `Shape` properties: `id`, `name`, `type`, `x`, `y`, `width`, `height`, `hasTextFrame`, `textFrame`
+- base `Shape` properties: `id`, `name`, `type`, `x`, `y`, `width`, `height`, `hasTextFrame`, `textFrame` (`x`, `y`, `width`, `height` are in inches; the package stores EMU)
 
 Text boxes and text-bearing autoshapes expose `textFrame`; unknown shape types are preserved and surfaced as generic shapes.
+
+## Images API
+
+PNG and JPEG images can be inserted from a `Buffer`, a `Uint8Array` (including a view with a `byteOffset`), or a filesystem path:
+
+```ts
+const picture = slide.addPicture('assets/logo.png', { x: 1, y: 2, width: 3, height: 1.5, name: 'Logo' });
+slide.addPicture(await readFile('assets/photo.jpg'));
+slide.addPicture(new Uint8Array(await readFile('assets/icon.png')), { x: 0.5, y: 0.5 }); // raw bytes from any source
+```
+
+`addPicture` detects the format from the magic bytes, writes the exact bytes of the payload to a free `ppt/media/imageN` part (unique across formats, never overwriting an existing part), adds the slide image relationship, registers the `png`/`jpg`/`jpeg` content-type defaults once, and emits a `p:pic` shape. `x`, `y`, `width`, and `height` are inches converted to EMU; omitted `width`/`height` fall back to the natural image size at 96 DPI (640x480 when the header carries no dimensions). It returns `{ name, id, index, x, y, width, height, fileName, contentType, format, relationshipId }`.
+
+Anything else throws `Unsupported image format: <format>` before the package is touched, so a failed call never adds a media part, relationship, shape, or content type. The error names `GIF`, `BMP`, `TIFF`, `WEBP`, `SVG`, `EMF`, `WMF`, `truncated PNG`, `truncated JPEG`, or `unknown`.
+
+Read side:
+
+- `slide.getPictures()` returns the same info objects for existing pictures.
+- `shape.type === 'picture'`, `shape.hasImage`, `shape.imageRelationshipId`, `shape.imageFileName`, `shape.imageContentType`, `shape.imageFormat`.
+- `detectImage(buffer)` exposes `{ format, extension, contentType, defaultExtensions, buffer, width, height }`.
 
 ## TextFrame, Paragraph, and Run API
 
@@ -198,7 +218,7 @@ src/
   text/
 ```
 
-This phase deliberately does not add images, tables, charts, notes, animations, SmartArt, audio, or video. The focus is internal robustness, conservative round-tripping, path resolution, IDs, relationships, and a maintainable shape/text model.
+Images are limited to PNG and JPEG insertion (no replace, crop, or transform, and no GIF/BMP/TIFF/SVG/EMF/WMF). This phase deliberately does not add tables, charts, notes, animations, SmartArt, audio, or video. The focus is internal robustness, conservative round-tripping, path resolution, IDs, relationships, and a maintainable shape/text model.
 
 ## Preservation model
 
@@ -206,7 +226,7 @@ When opening a `.pptx`, the library reads `_rels/.rels`, resolves `ppt/presentat
 
 ## Not implemented yet
 
-Tables, charts, images, notes, animations, and SmartArt are intentionally out of scope for this MVP.
+Tables, charts, notes, animations, and SmartArt are intentionally out of scope for this MVP. Image editing beyond PNG/JPEG insertion (replace, crop, other formats) is also still missing.
 
 ## Development
 

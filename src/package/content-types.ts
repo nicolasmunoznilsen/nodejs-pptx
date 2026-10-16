@@ -16,6 +16,18 @@ export class ContentTypes {
 
   hasOverride(partName: string): boolean { return this.xml.includes(`PartName="/${trim(partName)}"`); }
 
+  hasDefault(extension: string): boolean {
+    return new RegExp('<Default\\b[^>]*\\bExtension="' + escapeRegExp(extension) + '"', 'i').test(this.xml);
+  }
+
+  addDefault(extension: string, contentType: string): void {
+    const ext = extension.replace(/^\.+/, '');
+    if (!ext || this.hasDefault(ext)) return;
+    const before = this.xml;
+    this.xml = this.xml.replace('</Types>', `<Default Extension="${ext}" ContentType="${contentType}"/></Types>`);
+    if (this.xml !== before) this.dirty = true;
+  }
+
   addOverride(partName: string, contentType: string): void {
     const part = trim(partName);
     if (this.hasOverride(part)) return;
@@ -35,3 +47,4 @@ export class ContentTypes {
 }
 
 function trim(partName: string): string { return partName.startsWith('/') ? partName.slice(1) : partName; }
+function escapeRegExp(value: string): string { return value.replace(/[.*+?^${}()|[\]\\]/g, match => '\\' + match); }

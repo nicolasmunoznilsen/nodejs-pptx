@@ -1,9 +1,13 @@
+import { readFileSync } from 'node:fs';
 import type JSZip from 'jszip';
-import { nextShapeId } from '../ooxml/ids.js';
-import { relsPath } from '../ooxml/paths.js';
+import { allocateMediaPath, nextShapeId } from '../ooxml/ids.js';
+import { IMAGE_REL } from '../ooxml/constants.js';
+import { relsPath, relativePackageTarget, resolveRelationshipTarget } from '../ooxml/paths.js';
 import { arr, parseXml, readAttr, walk, xmlToString, type XmlNode } from '../ooxml/xml.js';
+import type { ContentTypes } from '../package/content-types.js';
 import { RelationshipCollection } from '../package/relationships.js';
 import { ShapeCollection } from '../shapes/shape-collection.js';
+import { detectImage, naturalImageSize, pictureXml, type ImageData, type PictureInfo, type PictureOptions } from '../shapes/picture.js';
 import { textBoxXml, type TextBoxInfo, type TextBoxOptions } from '../shapes/text-box.js';
 import type { Shape } from '../shapes/shape.js';
 import { PlaceholderCollection, placeholdersFromTree } from './placeholders.js';
@@ -16,9 +20,9 @@ export class Slide {
   readonly shapes: ShapeCollection;
   layout?: SlideLayout;
 
-  constructor(private readonly zip: JSZip, readonly path: string, private xml: XmlNode, relsXml?: XmlNode) {
+  constructor(private readonly zip: JSZip, readonly path: string, private xml: XmlNode, relsXml?: XmlNode, private readonly contentTypes?: ContentTypes) {
     this.relationships = new RelationshipCollection(relsXml);
-    this.shapes = new ShapeCollection(this.spTree, () => this.markDirty());
+    this.shapes = new ShapeCollection(this.spTree, () => this.markDirty(), rid => this.resolveImageTarget(rid));
   }
 
   get placeholders(): PlaceholderCollection { return new PlaceholderCollection(placeholdersFromTree(this.spTree, () => this.markDirty())); }
@@ -62,6 +66,44 @@ export class Slide {
     return this.getTextBoxes().at(-1)!;
   }
 
+  getPictures(): PictureInfo[] {
+    return this.shapes.all.filter(shape => shape.type === 'picture').map((shape, index) => ({
+      name: shape.name,
+      id: shape.id,
+      index,
+      x: shape.x,
+      y: shape.y,
+      width: shape.width,
+      height: shape.height,
+      fileName: shape.imageFileName ?? '',
+      contentType: shape.imageContentType ?? '',
+      format: shape.imageFormat,
+      relationshipId: shape.imageRelationshipId ?? '',
+    }));
+  }
+
+  /** Inserts a PNG or JPEG image, given as a Buffer, a Uint8Array, or a filesystem path. */
+  addPicture(input: Buffer | Uint8Array | string, options: PictureOptions = {}): PictureInfo {
+    const image = detectImage(typeof input === 'string' ? readFileSync(input) : input);
+    const mediaPath = allocateMediaPath(this.zip, image.extension);
+    this.zip.file(mediaPath, image.buffer);
+    image.defaultExtensions.forEach(ext => this.contentTypes?.addDefault(ext, image.contentType));
+    const rel = this.relationships.add(IMAGE_REL, relativePackageTarget(this.path, mediaPath));
+    this.relsDirty = true;
+    const pictures = arr(this.spTree['p:pic'] as XmlNode | XmlNode[] | undefined);
+    pictures.push(pictureXml(nextShapeId(this.spTree), rel.id, options, naturalImageSize(image)));
+    this.spTree['p:pic'] = pictures;
+    this.persist();
+    this.zip.file(relsPath(this.path), xmlToString(this.relationships.xml));
+    return this.getPictures().at(-1)!;
+  }
+
+  /** @internal */ private resolveImageTarget(relationshipId: string): string | undefined {
+    const rel = this.relationships.getById(relationshipId);
+    if (!rel || rel.type !== IMAGE_REL || !rel.target) return undefined;
+    return resolveRelationshipTarget(this.path, rel.target);
+  }
+
   persist(): void { this.markDirty(); this.zip.file(this.path, xmlToString(this.xml)); }
   persistIfDirty(): void {
     if (this.dirty) this.zip.file(this.path, xmlToString(this.xml));
@@ -78,8 +120,8 @@ export class Slide {
     return tree;
   }
 
-  static parse(zip: JSZip, path: string, xmlString: string, relsString?: string): Slide {
-    return new Slide(zip, path, parseXml(path, xmlString), relsString ? parseXml(relsPath(path), relsString) : undefined);
+  static parse(zip: JSZip, path: string, xmlString: string, relsString?: string, contentTypes?: ContentTypes): Slide {
+    return new Slide(zip, path, parseXml(path, xmlString), relsString ? parseXml(relsPath(path), relsString) : undefined, contentTypes);
   }
 }
 

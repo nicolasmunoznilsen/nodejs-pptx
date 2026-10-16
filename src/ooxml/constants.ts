@@ -5,3 +5,4 @@ export const MAIN_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/r
 export const SLIDE_MASTER_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster';
 export const SLIDE_LAYOUT_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout';
 export const THEME_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme';
+export const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
