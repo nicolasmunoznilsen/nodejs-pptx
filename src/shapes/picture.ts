@@ -176,6 +176,41 @@ export function naturalImageSize(image: ImageData): { width: number; height: num
   return { width, height };
 }
 
+/** @internal Shared message for rejected picture geometry options. */
+function describeInvalidGeometry(name: string, value: unknown, positive: boolean): string {
+  const expected = positive ? 'a finite number greater than 0' : 'a finite number';
+  return `Invalid picture ${name}: expected ${expected}, got ${describeGeometryValue(value)}.`;
+}
+
+/** @internal Renders a rejected option value the way the error message should report it. */
+function describeGeometryValue(value: unknown): string {
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'bigint' || typeof value === 'boolean' || value === null || value === undefined) return String(value);
+  return JSON.stringify(value) ?? String(value);
+}
+
+/**
+ * Validates the position and size options of a `PictureOptions` object before any package
+ * mutation happens. Every option that is present must be a `number` and `Number.isFinite`;
+ * `width` and `height` must additionally be greater than 0. `x` and `y` accept any finite
+ * number, including negative values, because a picture outside the canvas is legal OOXML.
+ * Absent (`undefined`/`null`) options are left untouched so the existing defaults apply
+ * (0.5\" for position, the natural image size for dimensions).
+ *
+ * Throws a `TypeError` naming the offending option and its value.
+ */
+export function validatePictureGeometry(options: PictureOptions = {}): void {
+  for (const name of ['x', 'y', 'width', 'height'] as const) {
+    const value = options[name];
+    if (value === undefined || value === null) continue;
+    const positive = name === 'width' || name === 'height';
+    if (typeof value !== 'number' || !Number.isFinite(value) || (positive && value <= 0)) {
+      throw new TypeError(describeInvalidGeometry(name, value, positive));
+    }
+  }
+}
+
 export function pictureXml(id: string, rId: string, options: PictureOptions = {}, size = { width: 4, height: 3 }): XmlNode {
   return {
     'p:nvPicPr': {
