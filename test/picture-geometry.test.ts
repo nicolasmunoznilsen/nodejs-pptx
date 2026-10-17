@@ -131,3 +131,68 @@ describe('issue #37: picture position and size validation', () => {
     expect(() => slide.addPicture(Buffer.alloc(0), { x: NaN })).toThrow(/^Invalid picture x: /);
   });
 });
+
+describe('issue #39: reject null and non-representable EMU geometry', () => {
+  it('rejects null naming the option and rendering the value as null', () => {
+    for (const name of ['x', 'y', 'width', 'height'] as const) {
+      expect(() => validatePictureGeometry({ [name]: null } as unknown as Parameters<typeof validatePictureGeometry>[0])).toThrow(TypeError);
+      expect(() => validatePictureGeometry({ [name]: null } as unknown as Parameters<typeof validatePictureGeometry>[0]))
+        .toThrow(new RegExp(`^Invalid picture ${name}: expected a finite number( greater than 0)?, got null\\.`));
+    }
+  });
+
+  it('rejects values whose EMU equivalent is not a safe integer', () => {
+    expect(() => validatePictureGeometry({ x: Number.MAX_SAFE_INTEGER })).toThrow(TypeError);
+    expect(() => validatePictureGeometry({ x: 1e13 })).toThrow(/^Invalid picture x: expected a finite number whose EMU value is a safe integer, got 10000000000000\./);
+    expect(() => validatePictureGeometry({ y: -1e13 })).toThrow(/^Invalid picture y: expected a finite number whose EMU value is a safe integer, got -10000000000000\./);
+    expect(() => validatePictureGeometry({ width: 1e13 })).toThrow(/^Invalid picture width: expected a finite number greater than 0 whose EMU value is a safe integer, got 10000000000000\./);
+    expect(() => validatePictureGeometry({ height: 1e10 })).toThrow(/^Invalid picture height: expected a finite number greater than 0 whose EMU value is a safe integer, got 10000000000\./);
+  });
+
+  it('keeps accepting representable geometry, including the defaults and off-canvas values', () => {
+    expect(() => validatePictureGeometry({ x: undefined, y: undefined, width: undefined, height: undefined })).not.toThrow();
+    expect(() => validatePictureGeometry({ x: 0, y: 0, width: 0.001, height: 1e6 })).not.toThrow();
+    expect(() => validatePictureGeometry({ x: -12.5, y: -0.25 })).not.toThrow();
+    expect(() => validatePictureGeometry({ x: -100, y: 400, width: 2, height: 3 })).not.toThrow();
+    expect(() => validatePictureGeometry({ name: 'Logo' })).not.toThrow();
+  });
+
+  it('keeps the defaults when geometry options are absent', async () => {
+    const info = Presentation.create().slides.add().addPicture(png(96, 48));
+    expect(info.x).toBe(0.5);
+    expect(info.y).toBe(0.5);
+    expect(info.width).toBeCloseTo(1, 6);
+    expect(info.height).toBeCloseTo(0.5, 6);
+  });
+
+  it('rejects null and oversized geometry before any package mutation', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    slide.addTextBox('keep me', { name: 'Caption' });
+    const beforeNames = Object.keys((await JSZip.loadAsync(await pptx.toBuffer())).files).sort();
+
+    const invalid: Array<Record<string, unknown>> = [
+      { x: null },
+      { y: null },
+      { width: null },
+      { height: null },
+      { x: 1e13 },
+      { height: 1e10 },
+    ];
+    for (const options of invalid) {
+      expect(() => slide.addPicture(png(96, 48), options as never)).toThrow(/^Invalid picture (x|y|width|height): /);
+    }
+
+    const after = await JSZip.loadAsync(await pptx.toBuffer());
+    expect(Object.keys(after.files).sort()).toEqual(beforeNames);
+    const slideXml = await after.file('ppt/slides/slide1.xml')!.async('string');
+    expect(slideXml).not.toContain('<p:pic>');
+    expect(slideXml).toContain('keep me');
+  });
+
+  it('validates geometry before the image payload is inspected', () => {
+    const slide = Presentation.create().slides.add();
+    expect(() => slide.addPicture(Buffer.alloc(0), { x: null as unknown as number })).toThrow(/^Invalid picture x: expected a finite number, got null\./);
+    expect(() => slide.addPicture(Buffer.alloc(0), { width: 1e13 })).toThrow(/^Invalid picture width: expected a finite number greater than 0 whose EMU value is a safe integer/);
+  });
+});
