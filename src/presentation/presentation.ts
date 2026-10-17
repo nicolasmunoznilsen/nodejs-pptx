@@ -1,7 +1,7 @@
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import JSZip from 'jszip';
-import { MAIN_REL, REL_NS, SLIDE_LAYOUT_REL, SLIDE_MASTER_REL, SLIDE_REL, THEME_REL } from '../ooxml/constants.js';
+import { CORE_PROPS_REL, MAIN_REL, REL_NS, SLIDE_LAYOUT_REL, SLIDE_MASTER_REL, SLIDE_REL, THEME_REL } from '../ooxml/constants.js';
 import { allocateSlidePath } from '../ooxml/ids.js';
 import { relsPath, resolveRelationshipTarget, resolveRootRelationshipTarget } from '../ooxml/paths.js';
 import { arr, parseXml, readAttr, xmlToString, type XmlNode } from '../ooxml/xml.js';
@@ -26,6 +26,8 @@ export class Presentation {
   readonly slideList: Slide[] = [];
   private coreXml?: XmlNode;
   private coreDirty = false;
+  private corePath = 'docProps/core.xml';
+  private rootRels?: RelationshipCollection;
 
   private constructor(zip: JSZip, presentationXml: XmlNode, presentationRels: RelationshipCollection, contentTypes: ContentTypes) {
     this.zip = zip;
@@ -43,7 +45,10 @@ export class Presentation {
     contentTypes.addOverride('ppt/theme/theme1.xml', 'application/vnd.openxmlformats-officedocument.theme+xml');
     contentTypes.addOverride('docProps/core.xml', 'application/vnd.openxmlformats-package.core-properties+xml');
     contentTypes.save(zip, true);
-    zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${MAIN_REL}" Target="ppt/presentation.xml"/></Relationships>`);
+    const rootRels = RelationshipCollection.empty();
+    rootRels.add(MAIN_REL, 'ppt/presentation.xml');
+    rootRels.add(CORE_PROPS_REL, '../docProps/core.xml');
+    zip.file('_rels/.rels', xmlToString(rootRels.xml));
     const coreXmlString = `<?xml version="1.0" encoding="UTF-8"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>${escapeXml(options.title ?? 'Untitled presentation')}</dc:title><dc:creator>${escapeXml(options.author ?? 'nodejs-pptx')}</dc:creator></cp:coreProperties>`;
     zip.file('docProps/core.xml', coreXmlString);
     const presXml = parseXml('ppt/presentation.xml', `<?xml version="1.0" encoding="UTF-8"?><p:presentation xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst></p:sldIdLst><p:sldSz cx="${inches(options.width ?? 10)}" cy="${inches(options.height ?? 5.625)}"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`);
@@ -57,6 +62,7 @@ export class Presentation {
     zip.file('ppt/slideMasters/slideMaster1.xml', slideMasterXml());
     zip.file('ppt/slideMasters/_rels/slideMaster1.xml.rels', `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="${REL_NS}"><Relationship Id="rId1" Type="${SLIDE_LAYOUT_REL}" Target="../slideLayouts/slideLayout1.xml"/><Relationship Id="rId2" Type="${THEME_REL}" Target="../theme/theme1.xml"/></Relationships>`);
     const p = new Presentation(zip, presXml, presRels, contentTypes);
+    p.rootRels = rootRels;
     p.slideLayouts = new SlideLayoutCollection([new SlideLayout('ppt/slideLayouts/slideLayout1.xml', parseXml('ppt/slideLayouts/slideLayout1.xml', slideLayoutXml()), { path: 'ppt/slideMasters/slideMaster1.xml' })]);
     p.coreXml = parseXml('docProps/core.xml', coreXmlString);
     p.presentationDirty = true;
@@ -82,6 +88,7 @@ export class Presentation {
     const presRels = new RelationshipCollection(parseXml(presRelsPath, await presRelsFile.async('string')));
     const contentTypes = await ContentTypes.load(zip);
     const p = new Presentation(zip, presXml, presRels, contentTypes);
+    p.rootRels = rootRels;
     p.presentationPath = presPath; p.presentationRelsPath = presRelsPath;
     p.slideLayouts = new SlideLayoutCollection(await loadSlideLayouts(zip, presPath, presRels));
     await p.loadCoreProperties();
@@ -176,8 +183,14 @@ export class Presentation {
     if (this.presentationRels.dirty) this.zip.file(this.presentationRelsPath, xmlToString(this.presentationRels.xml));
   }
 
-  private async loadCoreProperties(): Promise<void> { const file = this.zip.file('docProps/core.xml'); if (file) this.coreXml = parseXml('docProps/core.xml', await file.async('string')); }
-  private persistCoreIfDirty(): void { if (this.coreDirty && this.coreXml) this.zip.file('docProps/core.xml', xmlToString(this.coreXml)); }
+  private async loadCoreProperties(): Promise<void> {
+    const coreRel = this.rootRels?.findByType(CORE_PROPS_REL);
+    const corePath = coreRel ? resolveRootRelationshipTarget(coreRel.target) : 'docProps/core.xml';
+    this.corePath = corePath;
+    const file = this.zip.file(corePath);
+    if (file) this.coreXml = parseXml(corePath, await file.async('string'));
+  }
+  private persistCoreIfDirty(): void { if (this.coreDirty && this.coreXml) this.zip.file(this.corePath, xmlToString(this.coreXml)); }
 
   get width(): number { const sz = (this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode; return (parseInt(readAttr(sz, 'cx') ?? '0', 10) || 0) / 914400; }
   set width(v: number) { ((this.presentationXml['p:presentation'] as XmlNode)['p:sldSz'] as XmlNode)['@_cx'] = String(inches(v)); this.presentationDirty = true; }

@@ -99,6 +99,7 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `paragraph.runs`
 - `paragraph.alignment`
 - `textFrame.alignment`
+- `textFrame.marginLeft` / `marginTop` / `marginRight` / `marginBottom` / `margin`
 - `run.text`
 - `run.font`
 
@@ -195,6 +196,41 @@ through `Object.hasOwn` on frozen lookup tables, so names inherited from `Object
 (`constructor`, `toString`, `__proto__`, ...) never resolve: a document containing `algn="constructor"`
 reads back as inherited alignment (`undefined`) instead of leaking an inherited value, and assigning
 such a name throws instead of writing it into the XML.
+
+### Text-frame margins
+
+`textFrame.marginLeft`, `marginTop`, `marginRight`, and `marginBottom` read and write the OOXML
+text-frame insets `a:bodyPr/@lIns`, `@tIns`, `@rIns`, and `@bIns`, in inches:
+
+```ts
+const frame = slide.shapes.findByName('Title 1')!.textFrame;
+
+frame.marginLeft = 0.25;   // <a:bodyPr lIns="228600"/>
+frame.marginTop = 0.1;     // <a:bodyPr ... tIns="91440"/>
+frame.marginLeft = undefined; // removes lIns, so the side inherits the default again
+```
+
+When an inset is not explicit, PowerPoint applies its DrawingML default: **0.1" left, 0.05" top,
+0.1" right, 0.05" bottom** (`MARGIN_DEFAULT_EMU` = `91440 / 45720 / 91440 / 45720` EMU). The
+getters report that rendered default rather than `undefined`, and assigning `undefined` means
+"inherit default": it deletes the attribute, so the next read returns the default again. Values are
+stored as rounded EMU (`Math.round(inches * 914400)`); `NaN`, negative, non-finite, or non-number
+values throw a `TypeError`, as does an unknown side name.
+
+`textFrame.margin` is a convenience over the four insets: reading returns the shared value only when
+all four agree (otherwise `undefined`), writing applies it to all of them. `slide.addTextBox()` also
+accepts `margin` and `marginLeft`/`marginTop`/`marginRight`/`marginBottom`, and
+`slide.getTextBoxes()` reports them. Unrelated `a:bodyPr` attributes and children (`wrap`,
+`anchor`, `rtlCol`, `a:normAutofit`, `a:sp3d`, ...) are kept, and a missing `a:bodyPr` is created
+lazily — only on write — as the first child of `p:txBody`, as required by the schema. Reading a
+margin, or assigning a value that is already in effect, does not mark the slide dirty, so untouched
+slides stay byte-identical after a round trip.
+
+The side -> attribute and side -> default tables (`MARGIN_ATTR`, `MARGIN_DEFAULT_EMU`, also
+exported, plus `marginAttrFor`) resolve through `Object.hasOwn` on frozen objects, so names
+inherited from `Object.prototype` (`constructor`, `__proto__`, ...) never resolve: a document
+containing `lIns="constructor"` reads back as the default inset instead of leaking an inherited
+value, and using such a side throws instead of writing it into the XML.
 
 `slide.replaceText()` can replace text that is split across multiple runs in the same paragraph:
 

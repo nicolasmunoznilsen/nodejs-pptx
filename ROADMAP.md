@@ -39,8 +39,7 @@ src/
 | --- | --- | --- |
 | Slides | Add and retrieve slides, allocate safe slide part names | Delete, duplicate, reorder, richer layouts, masters, and backgrounds |
 | Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
-| Text | `TextFrame -> Paragraph -> Run`, basic run font editing, paragraph alignment (`left`/`center`/`right`/`justify`), cross-run `replaceText` | Remaining paragraph formatting: margins, autofit, bullets beyond `buChar`, line spacing, hyperlinks, robust rich-text rewrite |
-| Images | Issue #21 (`feat: insert PNG and JPEG images into slides`) is implemented: `slide.addPicture` accepts a `Buffer`, a `Uint8Array` view, or a file path, writes the exact bytes to a free `ppt/media/imageN` part unique across formats, adds the image relationship, registers the `png`/`jpg`/`jpeg` content-type defaults once, emits `p:pic` with EMU geometry (natural 96 DPI size when `width`/`height` are omitted), rejects every other or truncated payload with `Unsupported image format: <format>` without touching the package, and `slide.getPictures()` reads pictures back after save and reopen | Other formats (GIF, BMP, TIFF, WEBP, SVG, EMF, WMF), replace, crop, rotation, and image transforms |
+
 | Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
 | Placeholders | Not implemented | Titles, content, pictures, and inheritance from layouts |
