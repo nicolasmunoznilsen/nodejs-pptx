@@ -39,7 +39,8 @@ src/
 | --- | --- | --- |
 | Slides | Add and retrieve slides, allocate safe slide part names | Delete, duplicate, reorder, richer layouts, masters, and backgrounds |
 | Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
-
+| Text | `TextFrame -> Paragraph -> Run` hierarchy, `slide.text`, `getTextBoxes()`, `addTextBox()`, and cross-run `replaceText()` | Run and paragraph formatting, lists/bullets, autofit, and richer regex/capture support (see 'Text model notes') |
+| Images | PNG/JPEG insertion via `slide.addPicture()` and readback via `getPictures()`/`shape.hasImage` (issue #21) | Replace, crop, transform, other formats (GIF, BMP, TIFF, WEBP, SVG, EMF, WMF), and truncated-payload handling |
 | Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
 | Placeholders | Not implemented | Titles, content, pictures, and inheritance from layouts |
