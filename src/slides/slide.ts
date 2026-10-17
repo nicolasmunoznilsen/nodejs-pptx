@@ -7,7 +7,7 @@ import { arr, parseXml, readAttr, walk, xmlToString, type XmlNode } from '../oox
 import type { ContentTypes } from '../package/content-types.js';
 import { RelationshipCollection } from '../package/relationships.js';
 import { ShapeCollection } from '../shapes/shape-collection.js';
-import { detectImage, naturalImageSize, pictureXml, type ImageData, type PictureInfo, type PictureOptions } from '../shapes/picture.js';
+import { detectImage, naturalImageSize, pictureXml, validatePictureGeometry, type ImageData, type PictureInfo, type PictureOptions } from '../shapes/picture.js';
 import { textBoxXml, type TextBoxInfo, type TextBoxOptions } from '../shapes/text-box.js';
 import type { Shape } from '../shapes/shape.js';
 import { PlaceholderCollection, placeholdersFromTree } from './placeholders.js';
@@ -89,6 +89,7 @@ export class Slide {
 
   /** Inserts a PNG or JPEG image, given as a Buffer, a Uint8Array, or a filesystem path. */
   addPicture(input: Buffer | Uint8Array | string, options: PictureOptions = {}): PictureInfo {
+    validatePictureGeometry(options);
     const image = detectImage(typeof input === 'string' ? readFileSync(input) : input);
     const mediaPath = allocateMediaPath(this.zip, image.extension);
     this.zip.file(mediaPath, image.buffer);

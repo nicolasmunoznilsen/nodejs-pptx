@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Presentation, contentTypeForExtension, detectImage, naturalImageSize, resolveRelationshipTarget } from '../src/index.js';
+import type { PictureOptions } from '../src/index.js';
 import { IMAGE_REL } from '../src/ooxml/constants.js';
 
 function png(width: number, height: number): Buffer {
@@ -818,5 +819,130 @@ describe('issue #21 acceptance: spPr geometry and picture count', () => {
     expect(pictures.map(picture => picture.fileName)).toEqual(['ppt/media/image1.png', 'ppt/media/image2.jpg']);
     expect(pictures.map(picture => picture.contentType)).toEqual(['image/png', 'image/jpeg']);
     expect(new Set(pictures.map(picture => picture.relationshipId)).size).toBe(2);
+  });
+});
+
+/** Independent acceptance verification for issue #37 (picture geometry validation). */
+const GEOMETRY_ERROR = /picture (x|y|width|height)/;
+
+/** JSZip 3.x has no fileNames(); Object.keys(zip.files) is the equivalent entry listing. */
+function zipFileNames(zip: JSZip): string[] {
+  const names: string[] = [];
+  zip.forEach((path, entry) => { if (!entry.dir) names.push(path); });
+  return names.sort();
+}
+
+function geometryZipState(pptx: Presentation): Promise<{ media: string[]; slideXml: string; rels: string }> {
+  return (async () => {
+    const zip = await JSZip.loadAsync(await pptx.toBuffer());
+    return {
+      media: zipFileNames(zip).filter(name => name.includes('ppt/media')).sort(),
+      slideXml: await zip.file('ppt/slides/slide1.xml')!.async('string'),
+      rels: await zip.file('ppt/slides/_rels/slide1.xml.rels')!.async('string'),
+    };
+  })();
+}
+
+describe('issue #37 acceptance: picture position and size validation', () => {
+  it('addPicture throws a TypeError naming the offending option for invalid geometry', () => {
+    const slide = Presentation.create().slides.add();
+    const badPositions: Array<[string, unknown]> = [
+      ['x', NaN], ['y', NaN],
+      ['x', Infinity], ['y', Infinity], ['x', -Infinity], ['y', -Infinity],
+      ['x', '1'], ['y', '2'],
+    ];
+    for (const [name, value] of badPositions) {
+      expect(() => slide.addPicture(png(24, 12), { [name]: value as number }), `x/y=${String(value)}`).toThrow(TypeError);
+      expect(() => slide.addPicture(png(24, 12), { [name]: value as number }), `x/y=${String(value)}`).toThrow(GEOMETRY_ERROR);
+    }
+    const badSizes: Array<[string, unknown]> = [
+      ['width', 0], ['height', 0],
+      ['width', -1], ['height', -0.5], ['width', -1e9],
+      ['width', NaN], ['height', NaN], ['width', Infinity], ['height', -Infinity],
+      ['width', '3'], ['height', '1.5'],
+    ];
+    for (const [name, value] of badSizes) {
+      expect(() => slide.addPicture(png(24, 12), { [name]: value as number }), `${name}=${String(value)}`).toThrow(TypeError);
+      expect(() => slide.addPicture(png(24, 12), { [name]: value as number }), `${name}=${String(value)}`).toThrow(GEOMETRY_ERROR);
+    }
+  });
+
+  it('leaves media parts, slide XML and rels untouched and keeps the picture count when rejecting', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    slide.addTextBox('keep me', { name: 'Caption' });
+    slide.addPicture(png(32, 16), { name: 'keep' });
+    const before = await geometryZipState(pptx);
+    const beforeCount = slide.getPictures().length;
+    expect(before.media).toEqual(['ppt/media/image1.png']);
+    expect(beforeCount).toBe(1);
+
+    const invalidOptions: PictureOptions[] = [
+      { x: NaN }, { y: Infinity }, { x: '1' as unknown as number },
+      { width: 0 }, { height: -2 }, { width: NaN }, { height: '1.5' as unknown as number },
+      { x: 1, y: 1, width: -3, height: 1 },
+    ];
+    for (const options of invalidOptions) {
+      expect(() => slide.addPicture(jpeg(40, 20), options), JSON.stringify(options)).toThrow(TypeError);
+      const after = await geometryZipState(pptx);
+      expect(after.media, `media after ${JSON.stringify(options)}`).toEqual(before.media);
+      expect(after.slideXml, `slide xml after ${JSON.stringify(options)}`).toBe(before.slideXml);
+      expect(after.rels, `rels after ${JSON.stringify(options)}`).toBe(before.rels);
+      expect(slide.getPictures().length, `count after ${JSON.stringify(options)}`).toBe(beforeCount);
+    }
+  });
+
+  it('validates geometry before inspecting the payload so an unsupported buffer reports geometry first', () => {
+    const slide = Presentation.create().slides.add();
+    for (const payload of [Buffer.from('GIF89a\x01\x00\x01\x00\x00\x00'), Buffer.alloc(0), Buffer.from('not an image at all')]) {
+      expect(() => slide.addPicture(payload, { x: NaN })).toThrow(TypeError);
+      expect(() => slide.addPicture(payload, { x: NaN })).toThrow(/picture x/);
+      expect(() => slide.addPicture(payload, { width: 0 })).toThrow(/picture width/);
+      let message = '';
+      try { slide.addPicture(payload, { height: -1 }); } catch (error) { message = (error as Error).message; }
+      expect(message).toMatch(/picture height/);
+      expect(message).not.toMatch(/Unsupported image format/);
+    }
+    expect(slide.getPictures()).toHaveLength(0);
+  });
+
+  it('keeps negative and omitted geometry working and stores negative offsets outside the canvas', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    const omitted = slide.addPicture(png(96, 48), { name: 'omitted' });
+    expect(omitted.x).toBe(0.5);
+    expect(omitted.y).toBe(0.5);
+    expect(omitted.width).toBeCloseTo(1, 6);
+    expect(omitted.height).toBeCloseTo(0.5, 6);
+
+    const negative = slide.addPicture(png(96, 48), { x: -1, y: -1, width: 3, height: 1.5 });
+    expect([negative.x, negative.y, negative.width, negative.height]).toEqual([-1, -1, 3, 1.5]);
+
+    const zip = await JSZip.loadAsync(await pptx.toBuffer());
+    const slideXml = await zip.file('ppt/slides/slide1.xml')!.async('string');
+    expect(slideXml).toContain('<a:off x="-914400" y="-914400"/>');
+    expect(slideXml).toContain('<a:ext cx="2743200" cy="1371600"/>');
+
+    const reopened = await Presentation.open(await pptx.toBuffer());
+    const pictures = reopened.slides.get(0).getPictures();
+    expect(pictures.map(picture => [picture.x, picture.y, picture.width, picture.height])).toEqual([
+      [0.5, 0.5, 1, 0.5],
+      [-1, -1, 3, 1.5],
+    ]);
+  });
+
+  it('still accepts a valid call right after a rejected one', async () => {
+    const pptx = Presentation.create();
+    const slide = pptx.slides.add();
+    expect(() => slide.addPicture(png(24, 12), { x: NaN, name: 'rejected' })).toThrow(/picture x/);
+    expect(slide.getPictures()).toHaveLength(0);
+    const info = slide.addPicture(jpeg(48, 24), { x: 2, y: 3, width: 4, height: 2, name: 'valid' });
+    expect(info).toMatchObject({ name: 'valid', fileName: 'ppt/media/image1.jpg', width: 4, height: 2, x: 2, y: 3 });
+    expect(slide.getPictures().map(picture => picture.name)).toEqual(['valid']);
+    const zip = await JSZip.loadAsync(await pptx.toBuffer());
+    expect(zipFileNames(zip).filter(name => name.includes('ppt/media')).sort()).toEqual(['ppt/media/image1.jpg']);
+    expect(await zip.file('ppt/media/image1.jpg')!.async('nodebuffer')).toEqual(jpeg(48, 24));
+    const pictures = (await Presentation.open(await pptx.toBuffer())).slides.get(0).getPictures();
+    expect(pictures.map(picture => picture.name)).toEqual(['valid']);
   });
 });
