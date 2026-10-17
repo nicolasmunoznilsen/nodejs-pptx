@@ -19,8 +19,22 @@ export function xmlToString(xml: XmlNode): string {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + builder.build(xml);
 }
 
+/**
+ * Reads an attribute value, tolerating namespace prefixes kept by the parser.
+ * `readAttr({ '@_r:embed': 'rId2' }, 'embed')` returns `rId2`.
+ */
 export function readAttr(node: unknown, attr: string): string | undefined {
-  return typeof node === 'object' && node !== null ? (node as XmlNode)[`@_${attr}`] as string | undefined : undefined;
+  if (typeof node !== 'object' || node === null) return undefined;
+  const record = node as XmlNode;
+  const direct = record[`@_${attr}`] as string | undefined;
+  if (direct !== undefined) return direct;
+  for (const key of Object.keys(record)) {
+    if (!key.startsWith('@_')) continue;
+    const name = key.slice(2);
+    const colon = name.lastIndexOf(':');
+    if (colon >= 0 && name.slice(colon + 1) === attr) return record[key] as string | undefined;
+  }
+  return undefined;
 }
 
 export function writeAttr(node: XmlNode, attr: string, value: string | undefined): void {

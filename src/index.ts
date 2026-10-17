@@ -1,5 +1,4 @@
-export { EMU_PER_INCH, CORE_PROPS_REL } from './ooxml/constants.js';
-export { resolveRelationshipTarget, resolveRootRelationshipTarget } from './ooxml/paths.js';
+
 export { RelationshipCollection, type Relationship } from './package/relationships.js';
 export { ContentTypes } from './package/content-types.js';
 export { Presentation, inches, type PresentationOptions } from './presentation/presentation.js';
@@ -8,6 +7,7 @@ export { Slide } from './slides/slide.js';
 export { Shape, type ShapeType } from './shapes/shape.js';
 export { ShapeCollection } from './shapes/shape-collection.js';
 export { type TextBoxInfo, type TextBoxOptions } from './shapes/text-box.js';
+export { type ImageData, type ImageFormat, type PictureInfo, type PictureOptions, contentTypeForExtension, detectImage, naturalImageSize, pictureXml } from './shapes/picture.js';
 export { TextFrame } from './text/text-frame.js';
 export { Paragraph } from './text/paragraph.js';
 export { type ParagraphAlignment, ALIGNMENT_TO_OOXML, OOXML_TO_ALIGNMENT, alignmentToOoxml, alignmentFromOoxml } from './text/alignment.js';

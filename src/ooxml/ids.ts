@@ -23,6 +23,23 @@ export function allocateSlidePath(zip: JSZip): string {
   return `ppt/slides/slide${n}.xml`;
 }
 
+const MEDIA_EXTENSIONS = 'png|jpe?g|gif|bmp|tiff?|emf|wmf|svg';
+const MEDIA_PATH = new RegExp('^ppt/media/image(\\d+)\\.(?:' + MEDIA_EXTENSIONS + ')$', 'i');
+
+/** Returns the first unused `ppt/media/imageN.<extension>` part, never an existing part. */
+export function allocateMediaPath(zip: JSZip, extension: string): string {
+  const used = new Set<number>();
+  (zip as unknown as { forEach(callback: (path: string, file: { dir?: boolean }) => void): void }).forEach((path, file) => {
+    if (file.dir) return;
+    const match = MEDIA_PATH.exec(path);
+    if (match) used.add(Number(match[1]));
+  });
+  let n = 1;
+  while (used.has(n)) n += 1;
+  const ext = extension.replace(/^\.+/, '').toLowerCase();
+  return 'ppt/media/image' + n + '.' + ext;
+}
+
 export function maxNumericRelationshipId(rels: Array<{ id: string }>): number {
   return rels.reduce((max, rel) => Math.max(max, parseInt(rel.id.replace(/^rId/, ''), 10) || 0), 0);
 }

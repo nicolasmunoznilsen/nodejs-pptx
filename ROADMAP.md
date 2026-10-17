@@ -1,6 +1,6 @@
 # Roadmap toward python-pptx parity
 
-`nodejs-pptx` is currently an MVP, not a full `python-pptx` equivalent. It covers creating/opening PPTX files, adding blank slides and text boxes, enumerating basic shapes, reading and editing text runs, replacing text, and saving while preserving unrelated ZIP parts.
+`nodejs-pptx` is currently an MVP, not a full `python-pptx` equivalent. It covers creating/opening PPTX files, adding blank slides, text boxes and PNG/JPEG pictures, enumerating basic shapes, reading and editing text runs, replacing text, and saving while preserving unrelated ZIP parts.
 
 ## Architecture status
 
@@ -26,6 +26,7 @@ src/
     shape.ts
     shape-collection.ts
     text-box.ts
+    picture.ts
   text/
     text-frame.ts
     paragraph.ts
@@ -38,8 +39,7 @@ src/
 | --- | --- | --- |
 | Slides | Add and retrieve slides, allocate safe slide part names | Delete, duplicate, reorder, richer layouts, masters, and backgrounds |
 | Shapes | Shape collection, text boxes, text-bearing autoshapes, generic read-only shapes | Rectangles, circles, lines, connectors, groups, freeforms, geometry editing |
-| Text | `TextFrame -> Paragraph -> Run`, basic run font editing, paragraph alignment (`left`/`center`/`right`/`justify`), text-frame margins (`marginLeft`/`Top`/`Right`/`Bottom` and `margin`, OOXML `a:bodyPr` insets), cross-run `replaceText` | Remaining paragraph formatting: autofit, bullets beyond `buChar`, line spacing, hyperlinks, robust rich-text rewrite |
-| Images | Not implemented | Add, read, replace, crop, and preserve relationships/media |
+
 | Tables | Not implemented | Create and edit rows, columns, cells, merges, and styles |
 | Charts | Not implemented | Create and modify charts, series, categories, axes, legends, and embedded Excel data |
 | Placeholders | Not implemented | Titles, content, pictures, and inheritance from layouts |
@@ -62,10 +62,10 @@ TextFrame -> Paragraph -> Run
 1. Continue hardening the base: package parts, relationships, content types, identifiers, and round-trip preservation.
 2. Expand the shape and text models: `slide.shapes`, generic shapes, paragraphs, runs, and formatting.
 3. Implement real slide operations: layouts, masters, placeholders, delete, move, and duplicate.
-4. Add images and tables.
+4. Extend images (issue #21 shipped PNG/JPEG insertion; replace and crop remain) and add tables.
 5. Add charts and speaker notes.
 6. Build a compatibility corpus with PPTX files from PowerPoint, LibreOffice, and Google Slides, including open-save-open round-trip tests.
 
 ## Current restrictions
 
-Do not add images, tables, charts, notes, animations, SmartArt, audio, or video until the shape/text abstractions and round-trip behavior are stronger.
+Picture support covers PNG and JPEG only (issue #21): other formats (GIF, BMP, TIFF, WEBP, SVG, EMF, WMF) and truncated PNG/JPEG payloads are rejected with an error naming the detected format before the package is modified, and replace, crop, and transform operations are still missing. Do not add tables, charts, notes, animations, SmartArt, audio, or video until the shape/text abstractions and round-trip behavior are stronger.

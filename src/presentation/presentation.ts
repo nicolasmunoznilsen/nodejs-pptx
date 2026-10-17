@@ -112,7 +112,7 @@ export class Presentation {
     const slideRels = RelationshipCollection.empty();
     const selectedLayout = layout ?? this.slideLayouts.toArray()[0];
     slideRels.add(SLIDE_LAYOUT_REL, selectedLayout ? relativeSlideTarget(selectedLayout.path) : '../slideLayouts/slideLayout1.xml');
-    const slide = new Slide(this.zip, slidePath, slideXml, slideRels.xml);
+    const slide = new Slide(this.zip, slidePath, slideXml, slideRels.xml, this.contentTypes);
     slide.layout = selectedLayout;
     this.slideList.push(slide);
     const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
@@ -164,7 +164,7 @@ export class Presentation {
     const slidePath = allocateSlidePath(this.zip);
     const xml = cloneXml(original.xmlNode);
     const relsXml = cloneXml(original.relationshipsXml);
-    const slide = new Slide(this.zip, slidePath, xml, relsXml);
+    const slide = new Slide(this.zip, slidePath, xml, relsXml, this.contentTypes);
     slide.layout = original.layout;
     this.slideList.splice(targetIndex, 0, slide);
     const rel = this.presentationRels.add(SLIDE_REL, `slides/${basename(slidePath)}`);
@@ -222,7 +222,7 @@ export class Presentation {
       const slidePath = resolveRelationshipTarget(this.presentationPath, rel.target);
       const file = this.zip.file(slidePath); if (!file) throw new Error(`Invalid PPTX: missing slide part ${slidePath}.`);
       const relsFile = this.zip.file(relsPath(slidePath));
-      const slide = Slide.parse(this.zip, slidePath, await file.async('string'), relsFile ? await relsFile.async('string') : undefined);
+      const slide = Slide.parse(this.zip, slidePath, await file.async('string'), relsFile ? await relsFile.async('string') : undefined, this.contentTypes);
       const layoutRel = slide.relationshipsItems.find(r => r.type === SLIDE_LAYOUT_REL);
       const layoutPath = layoutRel ? resolveRelationshipTarget(slidePath, layoutRel.target) : undefined;
       slide.layout = layoutPath ? this.slideLayouts.toArray().find(l => l.path === layoutPath) : undefined;
