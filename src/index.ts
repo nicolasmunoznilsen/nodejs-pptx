@@ -1,5 +1,6 @@
 
 export { RelationshipCollection, type Relationship } from './package/relationships.js';
+export { resolveRelationshipTarget, resolveRootRelationshipTarget, relsPath, relativePackageTarget } from './ooxml/paths.js';
 export { ContentTypes } from './package/content-types.js';
 export { Presentation, inches, type PresentationOptions } from './presentation/presentation.js';
 export { SlideCollection } from './presentation/slide-collection.js';
