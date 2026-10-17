@@ -177,8 +177,10 @@ export function naturalImageSize(image: ImageData): { width: number; height: num
 }
 
 /** @internal Shared message for rejected picture geometry options. */
-function describeInvalidGeometry(name: string, value: unknown, positive: boolean): string {
-  const expected = positive ? 'a finite number greater than 0' : 'a finite number';
+function describeInvalidGeometry(name: string, value: unknown, positive: boolean, representable = false): string {
+  const expected = representable
+    ? `a finite number${positive ? ' greater than 0' : ''} whose EMU value is a safe integer`
+    : positive ? 'a finite number greater than 0' : 'a finite number';
   return `Invalid picture ${name}: expected ${expected}, got ${describeGeometryValue(value)}.`;
 }
 
@@ -193,20 +195,25 @@ function describeGeometryValue(value: unknown): string {
 /**
  * Validates the position and size options of a `PictureOptions` object before any package
  * mutation happens. Every option that is present must be a `number` and `Number.isFinite`;
- * `width` and `height` must additionally be greater than 0. `x` and `y` accept any finite
- * number, including negative values, because a picture outside the canvas is legal OOXML.
- * Absent (`undefined`/`null`) options are left untouched so the existing defaults apply
- * (0.5\" for position, the natural image size for dimensions).
+ * `width` and `height` must additionally be greater than 0, and every value must convert to
+ * a `Number.isSafeInteger` EMU so it can be written to the OOXML geometry. `x` and `y`
+ * accept any finite number, including negative values, because a picture outside the canvas
+ * is legal OOXML. Only absent (`undefined`) options are left untouched so the existing
+ * defaults apply (0.5\" for position, the natural image size for dimensions); `null` is
+ * rejected like any other invalid value.
  *
  * Throws a `TypeError` naming the offending option and its value.
  */
 export function validatePictureGeometry(options: PictureOptions = {}): void {
   for (const name of ['x', 'y', 'width', 'height'] as const) {
     const value = options[name];
-    if (value === undefined || value === null) continue;
+    if (value === undefined) continue;
     const positive = name === 'width' || name === 'height';
     if (typeof value !== 'number' || !Number.isFinite(value) || (positive && value <= 0)) {
       throw new TypeError(describeInvalidGeometry(name, value, positive));
+    }
+    if (!Number.isSafeInteger(Math.round(value * EMU_PER_INCH))) {
+      throw new TypeError(describeInvalidGeometry(name, value, positive, true));
     }
   }
 }
