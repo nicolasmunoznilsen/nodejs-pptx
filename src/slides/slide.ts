@@ -38,6 +38,11 @@ export class Slide {
       width: shape.width,
       height: shape.height,
       alignment: shape.textFrame.alignment,
+      margin: shape.textFrame.margin,
+      marginLeft: shape.textFrame.marginLeft,
+      marginTop: shape.textFrame.marginTop,
+      marginRight: shape.textFrame.marginRight,
+      marginBottom: shape.textFrame.marginBottom,
     }));
   }
 
