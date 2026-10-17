@@ -1,4 +1,4 @@
-export { EMU_PER_INCH } from './ooxml/constants.js';
+export { EMU_PER_INCH, CORE_PROPS_REL } from './ooxml/constants.js';
 export { resolveRelationshipTarget, resolveRootRelationshipTarget } from './ooxml/paths.js';
 export { RelationshipCollection, type Relationship } from './package/relationships.js';
 export { ContentTypes } from './package/content-types.js';
