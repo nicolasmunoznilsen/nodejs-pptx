@@ -103,6 +103,8 @@ npx vite-node examples/read-all-text.ts input.pptx
 - `run.text`
 - `run.font`
 
+The package also exports `EMU_PER_INCH` (`914400`) and the core-properties relationship type `CORE_PROPS_REL`.
+
 ## Shapes API
 
 Slides now expose a `shapes` collection in addition to the legacy text-box helpers:

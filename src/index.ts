@@ -17,3 +17,4 @@ export { Run, type RunFont } from './text/run.js';
 export { PptxPackage } from './package/pptx-package.js';
 export { SlideLayout, SlideLayoutCollection } from './presentation/slide-layout.js';
 export { Placeholder, PlaceholderCollection, type PlaceholderType } from './slides/placeholders.js';
+export { EMU_PER_INCH, CORE_PROPS_REL } from './ooxml/constants.js';
