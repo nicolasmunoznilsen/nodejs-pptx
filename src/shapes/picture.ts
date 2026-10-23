@@ -169,7 +169,12 @@ function jpegSize(b: Uint8Array): { width?: number; height?: number } {
   return {};
 }
 
-/** Natural display size, in inches, of an image at 96 DPI. */
+/**
+ * Natural display size, in inches, of an image at 96 DPI. The pixel dimensions come from
+ * {@link detectImage}, which only reports a size when it is greater than 0, so every result
+ * is at least one pixel (1/96\" ≈ 9525 EMU) or falls back to the 640x480 default: neither can
+ * ever round to 0 EMU, so a natural size always satisfies {@link validatePictureGeometry}.
+ */
 export function naturalImageSize(image: ImageData): { width: number; height: number } {
   const width = (image.width ?? DEFAULT_PIXEL_WIDTH) * EMU_PER_PIXEL / EMU_PER_INCH;
   const height = (image.height ?? DEFAULT_PIXEL_HEIGHT) * EMU_PER_PIXEL / EMU_PER_INCH;
@@ -196,11 +201,16 @@ function describeGeometryValue(value: unknown): string {
  * Validates the position and size options of a `PictureOptions` object before any package
  * mutation happens. Every option that is present must be a `number` and `Number.isFinite`;
  * `width` and `height` must additionally be greater than 0, and every value must convert to
- * a `Number.isSafeInteger` EMU so it can be written to the OOXML geometry. `x` and `y`
- * accept any finite number, including negative values, because a picture outside the canvas
- * is legal OOXML. Only absent (`undefined`) options are left untouched so the existing
- * defaults apply (0.5\" for position, the natural image size for dimensions); `null` is
- * rejected like any other invalid value.
+ * a `Number.isSafeInteger` EMU so it can be written to the OOXML geometry. `width` and
+ * `height` must also convert to a non-zero EMU: a positive size that rounds to `0` EMU
+ * (`|value| < 0.5 / EMU_PER_INCH`, roughly `5.4677e-7` inches, so `Number.MIN_VALUE`,
+ * `5e-7` and `1e-9` all land here) describes an invisible picture that PowerPoint cannot
+ * render, so it is rejected with the same message as the other non-representable EMU
+ * values. `x` and `y` accept any finite number, including negative values and values that
+ * round to `0` EMU, because a picture outside the canvas or flush with the origin is legal
+ * OOXML. Only absent (`undefined`) options are left untouched so the existing defaults
+ * apply (0.5\" for position, the natural image size for dimensions); `null` is rejected like
+ * any other invalid value.
  *
  * Throws a `TypeError` naming the offending option and its value.
  */
@@ -212,13 +222,22 @@ export function validatePictureGeometry(options: PictureOptions = {}): void {
     if (typeof value !== 'number' || !Number.isFinite(value) || (positive && value <= 0)) {
       throw new TypeError(describeInvalidGeometry(name, value, positive));
     }
-    if (!Number.isSafeInteger(Math.round(value * EMU_PER_INCH))) {
+    const emu = Math.round(value * EMU_PER_INCH);
+    if (!Number.isSafeInteger(emu) || (positive && emu === 0)) {
       throw new TypeError(describeInvalidGeometry(name, value, positive, true));
     }
   }
 }
 
+/**
+ * Builds the `p:pic` element. Both the caller-supplied options and the effective size (the
+ * `size` fallback that carries the natural image dimensions) go through
+ * {@link validatePictureGeometry}, so no geometry that cannot be represented in EMU reaches
+ * the package, whether it came from an option or from a default.
+ */
 export function pictureXml(id: string, rId: string, options: PictureOptions = {}, size = { width: 4, height: 3 }): XmlNode {
+  validatePictureGeometry(options);
+  validatePictureGeometry({ width: options.width ?? size.width, height: options.height ?? size.height });
   return {
     'p:nvPicPr': {
       'p:cNvPr': { '@_id': id, '@_name': options.name ?? `Picture ${id}` },
